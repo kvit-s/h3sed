@@ -7,3 +7,6 @@ h3sed.ini
 build/dist/
 build/work/
 build/makeexe.log
+
+# Screenshots for the README are kept, unlike scratch images
+!img/*.png

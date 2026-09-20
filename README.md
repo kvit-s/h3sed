@@ -57,7 +57,7 @@ and pasted onto another hero, overwriting their data.
 
 A timestamped daily backup copy is automatically created of the savegame file, one per day.
 
-![Screenshot](https://raw.githubusercontent.com/suurjaak/h3sed/gh-pages/img/screen.png)
+![Screenshot](img/screen.png)
 
 Note: savegames from different releases of Armageddon's Blade may have different
 structure for equipment and inventory. For working with savegames from an earlier
