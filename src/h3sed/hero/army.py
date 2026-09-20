@@ -443,7 +443,7 @@ class ArmyPlugin(object):
         Returns True.
         """
         ctrls = [x.Window for x in ctrl.ContainingSizer.Children]
-        namectrl  = next(x for x in ctrls if isinstance(x, wx.ComboBox))
+        namectrl  = next(x for x in ctrls if isinstance(x, controls.COMBOBOXES))
         countctrl = namectrl.GetNextSibling()
         placectrl = countctrl.GetNextSibling()
 

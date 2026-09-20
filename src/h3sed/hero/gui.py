@@ -81,6 +81,7 @@ from .. lib import util
 from .. lib import wx_accel
 from .. lib.i18n import translate as __
 from .. import conf
+from .. import gamedata
 from .. import guibase
 from .. import templates
 
@@ -201,6 +202,8 @@ class HeroPlugin(object):
 
         tb = wx.ToolBar(heropanel, style=wx.TB_FLAT | wx.TB_NODIVIDER)
 
+        portrait = self._ctrls["portrait"] = wx.StaticBitmap(self._panel)
+        portrait.Hide()
         mine = self._ctrls["mine"] = wx.CheckBox(self._panel, label=__("&Only my heroes"))
         mine.ToolTip = __("Show only the heroes of the player identified on the Player tab")
         mine.Bind(wx.EVT_CHECKBOX,   self.on_toggle_mine)
@@ -253,6 +256,7 @@ class HeroPlugin(object):
 
         sizer = self._panel.Sizer = wx.BoxSizer(wx.VERTICAL)
         sizer_top = wx.BoxSizer(wx.HORIZONTAL)
+        sizer_top.Add(portrait, border=10, flag=wx.RIGHT | wx.ALIGN_CENTER_VERTICAL)
         sizer_top.Add(label,  border=10, flag=wx.RIGHT | wx.ALIGN_CENTER)
         sizer_top.Add(combo,  border=5,  flag=wx.TOP  | wx.BOTTOM | wx.GROW)
         sizer_top.Add(mine,   border=10, flag=wx.LEFT | wx.ALIGN_CENTER_VERTICAL)
@@ -824,6 +828,17 @@ class HeroPlugin(object):
         wx.CallLater(100, lambda: self._panel and self._panel.Layout())
 
 
+    def refresh_portrait(self):
+        """Shows the portrait of the selected hero, if game art is available."""
+        ctrl = self._ctrls.get("portrait")
+        if not ctrl: return
+        bitmap = gamedata.DATA.get_hero_bitmap(self._hero.index) if self._hero else None
+        if bitmap: ctrl.SetBitmap(bitmap)
+        if ctrl.Shown != bool(bitmap):
+            ctrl.Show(bool(bitmap))
+            ctrl.ContainingSizer.Layout()
+
+
     def get_own_heroes(self):
         """Returns heroes of the player identified on the player tab, as [Hero, ]."""
         index = self.savefile.player_index
@@ -954,6 +969,7 @@ class HeroPlugin(object):
                 self._subtab_focus[index] = self._ctrls["properties"].Selection
             if self._pages_visited[-1:] != [index]: self._pages_visited.append(index)
             self.ensure_subtab_rendered()
+            self.refresh_portrait()
             self._panel.Layout()
             self._panel.Thaw()
             self._ignore_events = False
@@ -997,6 +1013,7 @@ class HeroPlugin(object):
             self._indexpanel.Show()
             self._panel.Layout()
         if combo.Selection >= 0: combo.SetSelection(-1)
+        self.refresh_portrait()
         if self._pages_visited[-1:] != [None]: self._pages_visited.append(None)
         if focusctrl is search and not search.HasFocus():
             search.SetFocus()

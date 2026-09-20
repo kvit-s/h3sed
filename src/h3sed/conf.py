@@ -54,7 +54,8 @@ FileDirectives = [
 ]
 """List of user-modifiable attributes, saved if changed from default."""
 OptionalFileDirectives = [
-    "DarkTheme", "FileExtensions", "HeroesOwnOnly", "HeroToggles", "Language", "MaxConsoleHistory",
+    "DarkTheme", "FileExtensions", "GameDataDirectory", "HeroesOwnOnly", "HeroToggles",
+    "Language", "MaxConsoleHistory",
     "MaxRecentFiles", "PopupUnexpectedErrors", "Positions", "SavegameNewFormat",
     "StatusFlashLength", "Translations", "UpdateCheckInterval", "UserFunctions",
 ]
@@ -124,6 +125,9 @@ WindowPosition = None
 WindowSize = (700, 820)
 
 """---------------------------- /FileDirectives ----------------------------"""
+
+"""Directory of installed game data archives, for hero and artifact icons."""
+GameDataDirectory = ""
 
 """Whether hero selection is limited to the heroes of the identified player."""
 HeroesOwnOnly = True

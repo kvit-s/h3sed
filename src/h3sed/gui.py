@@ -46,6 +46,7 @@ from . import conf
 from . import functions
 from . import guibase
 from . import images
+from . import gamedata
 from . import metadata
 from . import player as player_gui
 from . import templates
@@ -2037,6 +2038,21 @@ class PluginCommand(wx.Command):
 
 
 
+def make_icon_getter(props):
+    """Returns function(value) giving a wx.Bitmap for a property value, or None."""
+    if "artifact" != props.get("icons") or not gamedata.DATA.available(): return None
+    ids = metadata.Store.get("ids")
+    def get_icon(value):
+        return gamedata.DATA.get_artifact_bitmap(ids[value]) if value in ids else None
+    return get_icon
+
+
+def make_combo(parent, icons, **kwargs):
+    """Returns a combobox, showing an icon per item if icons are to be had."""
+    if icons: return wx.adv.BitmapComboBox(parent, **kwargs)
+    return wx.ComboBox(parent, **kwargs)
+
+
 def build(plugin, panel):
     """
     Builds generic components into given panel according to plugin props,
@@ -2073,7 +2089,8 @@ def build(plugin, panel):
 
         def handler(event):
             value = ctrl.Value
-            if isinstance(ctrl, wx.ComboBox): value = ctrl.GetClientData(ctrl.Selection) or value
+            if isinstance(ctrl, controls.COMBOBOXES):
+                value = ctrl.GetClientData(ctrl.Selection) or value
             elif isinstance(ctrl, wx.SpinCtrlDouble): value = int(value)
             state  = plugin.state() if callable(getattr(plugin, "state", None)) else {}
             row    = state[rowindex] if rowindex is not None and isinstance(state, list) else state
@@ -2135,7 +2152,7 @@ def build(plugin, panel):
 
         def handler(event):
             value = ctrl.Value
-            if isinstance(ctrl, wx.ComboBox):
+            if isinstance(ctrl, controls.COMBOBOXES):
                 if ctrl.Selection < 0: return
                 value = ctrl.GetClientData(ctrl.Selection) or value
             if not value: return
@@ -2286,10 +2303,11 @@ def build(plugin, panel):
                             choices, labels = zip(*sorted(zip(choices, labels),
                                                           key=lambda x: x[1].lower()))
 
-                        c = wx.ComboBox(panel, style=wx.CB_DROPDOWN | wx.CB_READONLY,
-                                        name="%s_%s" % (plugin.name, i))
+                        icons = make_icon_getter(itemprop)
+                        c = make_combo(panel, icons, style=wx.CB_DROPDOWN | wx.CB_READONLY,
+                                       name="%s_%s" % (plugin.name, i))
                         value = formatter(v) if v is not None else "" if "" in choices else None
-                        controls.set_combo_choices(c, choices, labels, value)
+                        controls.set_combo_choices(c, choices, labels, value, icons)
                         c.Bind(wx.EVT_COMBOBOX, make_value_handler(c, itemprop, rowindex=i))
                         bsizer.Add(c, flag=wx.GROW)
                     elif "number" == itemprop.get("type"):
@@ -2412,7 +2430,8 @@ def build(plugin, panel):
         elif "combo" == prop.get("type"):
             c1 = wx.StaticText(panel, label=__(prop.get("label", prop["name"])),
                                name="%s_label" % prop["name"])
-            c2 = wx.ComboBox(panel, style=wx.CB_DROPDOWN | wx.CB_READONLY, name=prop["name"])
+            icons = make_icon_getter(prop)
+            c2 = make_combo(panel, icons, style=wx.CB_DROPDOWN | wx.CB_READONLY, name=prop["name"])
 
             formatter = prop["format"] if callable(prop.get("format")) else \
                         lambda x: list(map(__, x)) if isinstance(x, list) else __(x)
@@ -2428,7 +2447,7 @@ def build(plugin, panel):
                 choices, labels = zip(*sorted(zip(choices, labels), key=lambda x: x[1].lower()))
 
             controls.set_combo_choices(c2, choices, labels,
-                                       formatter(v) if v is not None else None)
+                                       formatter(v) if v is not None else None, icons)
             if prop.get("readonly"): c2.Enable(False)
             c2.Bind(wx.EVT_COMBOBOX, make_value_handler(c2, prop))
 

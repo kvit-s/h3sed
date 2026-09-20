@@ -41,6 +41,7 @@ DATAPROPS = [{
         "label":   "slot",
       }, {
         "type":    "combo",
+        "icons":   "artifact",
         "choices": None, # Populated later
         "format":  None, # Populated later
     }]

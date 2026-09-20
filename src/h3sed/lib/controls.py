@@ -43,6 +43,7 @@ import time
 import webbrowser
 
 import wx
+import wx.adv
 import wx.html
 import wx.lib.agw.labelbook
 import wx.lib.gizmos
@@ -1588,7 +1589,7 @@ def resize_img(img, size, aspect_ratio=True, bg=(-1, -1, -1)):
 _COMBO_WIDTHS = {}
 
 
-def set_combo_choices(ctrl, choices, labels, value=None):
+def set_combo_choices(ctrl, choices, labels, value=None, icons=None):
     """
     Assigns choices to a combobox, inserting the items only when the dropdown is first used.
 
@@ -1599,8 +1600,11 @@ def set_combo_choices(ctrl, choices, labels, value=None):
     @param   choices  data values for combobox items
     @param   labels   display labels for combobox items, in the same order as choices
     @param   value    label to show as current value, if any
+    @param   icons    function(choice) returning a wx.Bitmap for an item, if any
     """
     ctrl._choices, ctrl._labels, ctrl._populated = list(choices), list(labels), False
+    # Keep any icon provider the control was first given, so re-renders do not drop icons
+    ctrl._icons = icons if icons is not None else getattr(ctrl, "_icons", None)
     fit_combo_width(ctrl, ctrl._labels)
     if not getattr(ctrl, "_choices_bound", False):
         ctrl._choices_bound = True
@@ -1609,6 +1613,15 @@ def set_combo_choices(ctrl, choices, labels, value=None):
         ctrl.Bind(wx.EVT_COMBOBOX_DROPDOWN, filler)
     ctrl.SetItems([])
     set_combo_value(ctrl, value if value is not None else "")
+
+
+## Combobox classes, as wx.adv.BitmapComboBox does not derive from wx.ComboBox
+COMBOBOXES = (wx.ComboBox, wx.adv.BitmapComboBox)
+
+
+def _has_icons(ctrl):
+    """Returns whether the combobox shows an icon per item."""
+    return bool(getattr(ctrl, "_icons", None)) and isinstance(ctrl, wx.adv.BitmapComboBox)
 
 
 def fit_combo_width(ctrl, labels):
@@ -1633,8 +1646,14 @@ def populate_combo(ctrl):
     if getattr(ctrl, "_populated", True): return
     ctrl._populated = True
     value = ctrl.Value
-    ctrl.SetItems(ctrl._labels)
-    for j, x in enumerate(ctrl._choices): ctrl.SetClientData(j, x)
+    if _has_icons(ctrl):
+        ctrl.Clear()
+        for label, choice in zip(ctrl._labels, ctrl._choices):
+            bitmap = ctrl._icons(choice)
+            ctrl.Append(label, bitmap if bitmap else wx.NullBitmap, choice)
+    else:
+        ctrl.SetItems(ctrl._labels)
+        for j, x in enumerate(ctrl._choices): ctrl.SetClientData(j, x)
     if value in ctrl._labels: ctrl.Value = value
 
 
@@ -1655,6 +1674,12 @@ def set_combo_value(ctrl, label):
         ctrl.Value = label
         return
     index = ctrl._labels.index(label) if label in ctrl._labels else None
-    ctrl.SetItems([label])
-    ctrl.SetClientData(0, ctrl._choices[index] if index is not None else label)
+    choice = ctrl._choices[index] if index is not None else label
+    if _has_icons(ctrl):
+        ctrl.Clear()
+        bitmap = ctrl._icons(choice)
+        ctrl.Append(label, bitmap if bitmap else wx.NullBitmap, choice)
+    else:
+        ctrl.SetItems([label])
+        ctrl.SetClientData(0, choice)
     ctrl.Value = label
