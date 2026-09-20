@@ -1637,7 +1637,7 @@ class MainWindow(guibase.TemplateFrameMixIn, wx.Frame):
                     event.Veto()
                     return
 
-        if page is self.notebook.GetCurrentPage:
+        if page is self.notebook.GetCurrentPage():
             page.undoredo.ClearCommands()
             page.undoredo.SetMenuStrings()
 
