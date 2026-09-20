@@ -1,6 +1,17 @@
 CHANGELOG
 =========
 
+3.8+kvit2, 2026-09-20
+---------------------
+- fix the Player tab being empty on Horn of the Abyss savegames: a player
+  record is 149 bytes there rather than the 145 of Shadow of Death, so the
+  records were never found. The length is now detected per savefile
+- fix the human player never being detected, in any savegame of any version:
+  the human-or-computer flag was read from the following player's record
+- verify player resources, tavern heroes and human player against a Horn of
+  the Abyss savegame, and mark that layout as verified
+
+
 3.8+kvit1, 2026-09-20
 ---------------------
 First release of this fork of suurjaak/h3sed. Changes against upstream 3.8:

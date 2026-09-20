@@ -28,7 +28,7 @@ Name = "h3sed"
 Title = "Heroes3 Savegame Editor"
 # Fork builds carry a PEP 440 local version, so that the About box, the config
 # file and the built executable name say which of the two h3seds this is.
-Version = "3.8+kvit1"
+Version = "3.8+kvit2"
 VersionDate = "20.09.2026"
 
 Frozen = getattr(sys, "frozen", False)
