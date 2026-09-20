@@ -378,9 +378,10 @@ def run_gui(filenames):
 
     window.run_console("")
     window.run_console("self = wx.GetApp().TopWindow # Application main window")
-    for filename in filenames:
-        if os.path.isfile(filename):
-            wx.CallAfter(wx.PostEvent, window, gui.OpenSavefileEvent(-1, filename=filename))
+    # Only one savegame is kept open at a time, so open the first given
+    filename = next((f for f in filenames if os.path.isfile(f)), None)
+    if filename:
+        wx.CallAfter(wx.PostEvent, window, gui.OpenSavefileEvent(-1, filename=filename))
     app.MainLoop()
 
 

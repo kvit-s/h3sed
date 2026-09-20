@@ -651,10 +651,28 @@ class MainWindow(guibase.TemplateFrameMixIn, wx.Frame):
         return savefile, err
 
 
+    def close_savefile_pages(self, keep=None):
+        """
+        Closes all open savefile pages, asking about unsaved changes as usual.
+
+        @param   keep  filename to leave open, if any
+        @return        whether all other savefile pages are now closed
+                       (false if user cancelled closing one)
+        """
+        for filename in [f for f in self.files if f != keep]:
+            page = self.files[filename].get("page")
+            if not page: continue # for filename
+            index = self.notebook.GetPageIndex(page)
+            if index >= 0: self.notebook.DeletePage(index)
+            if filename in self.files: return False # Closing was vetoed or cancelled
+        return True
+
+
     def load_savefile_page(self, filename, savefile=None):
         """
         Tries to load the specified file, if not already open, create a
         subpage for it, if not already created, and focuses the subpage.
+        Closes the previously opened savefile, as only one is kept open at a time.
 
         @param   savefile  opened Savefile instance, if any
         @return            savefile page instance
@@ -662,6 +680,7 @@ class MainWindow(guibase.TemplateFrameMixIn, wx.Frame):
         opts = self.files.get(filename) or {}
         page = opts.get("page")
         if page:
+            self.close_savefile_pages(keep=filename)
             for i in range(self.notebook.GetPageCount()):
                 if self.notebook.GetPage(i) == page:
                     self.notebook.SetSelection(i)
@@ -671,6 +690,8 @@ class MainWindow(guibase.TemplateFrameMixIn, wx.Frame):
 
         savefile = savefile or self.load_savefile(filename)[0]
         if not savefile: return None
+        # Close the previous savefile only once the new one is known to be loadable
+        if not self.close_savefile_pages(): return None
 
         guibase.status(__("Opening page for %s.", filename), flash=True)
         tab_title = self.get_unique_tab_title(filename)
@@ -692,8 +713,9 @@ class MainWindow(guibase.TemplateFrameMixIn, wx.Frame):
 
     def load_savefile_pages(self, filenames):
         """
-        Tries to load the specified savefiles, if not already open, create
-        subpages for them, if not already created, and focus the subpages.
+        Tries to load the first of the specified savefiles, if not already open,
+        creates a subpage for it and focuses the subpage, closing the previously
+        opened savefile as only one is kept open at a time.
         Skips files that are not recognizable as savefiles.
         """
         savefiles, notsave_filenames, missing_filenames = {}, [], []
@@ -709,8 +731,14 @@ class MainWindow(guibase.TemplateFrameMixIn, wx.Frame):
                     if not isinstance(err, ValueError): err = __("Not a valid gzipped file?")
                     guibase.status(__("Failed to open %s.", f) + " %s" % err, flash=True)
 
-        for filename, savefile in savefiles.items():
+        for filename, savefile in list(savefiles.items())[:1]:
             self.load_savefile_page(filename, savefile)
+        if len(savefiles) > 1:
+            skipped = list(savefiles)[1:]
+            logger.info("Skipped opening %s, only one savegame is kept open at a time.",
+                        ", ".join(skipped))
+            guibase.status(__("Only one savegame can be open at a time, skipped %s.",
+                              util.plural("other file", skipped)), flash=True)
         if notsave_filenames or missing_filenames:
             texts = []
             if missing_filenames:
@@ -1456,7 +1484,7 @@ class MainWindow(guibase.TemplateFrameMixIn, wx.Frame):
         loads the chosen file.
         """
         with wx.FileDialog(self, message=__("Open"),
-            style=wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE | wx.FD_OPEN | wx.RESIZE_BORDER
+            style=wx.FD_FILE_MUST_EXIST | wx.FD_OPEN | wx.RESIZE_BORDER
         ) as dialog:
             self.set_savegame_filters(dialog)
             if wx.ID_OK != dialog.ShowModal(): return
@@ -1732,7 +1760,7 @@ class SavefilePage(wx.Panel):
             wx.OK | wx.CANCEL | wx.ICON_INFORMATION
         ): return
         try:
-            self.savefile.read()
+            self.savefile.read(parse_heroes=False)
         except Exception as e:
             logger.exception("Error reloading %s.", self.filename)
             wx.MessageBox(__("Error reloading %s", self.filename) + ":\n\n%s" % util.format_exc(e),
@@ -1864,7 +1892,6 @@ class SavefilePage(wx.Panel):
     def load_data(self):
         """Loads data from our file."""
         if not self.plugins:
-            self.savefile.parse_heroes()
             icon_index = self.notebook.GetImageList().Add(images.PageHero.Bitmap)
             panel = wx.Panel(self.notebook)
             self.notebook.AddPage(panel, __("Hero"), imageId=icon_index)

@@ -525,7 +525,31 @@ class Spells(OrderedSet, DataClass):
 
 
 
+def make_property_accessor(section):
+    """
+    Returns a property descriptor for a hero property section like "stats".
+
+    Reading the attribute parses hero bytes first, if hero has file data not yet parsed.
+    """
+    def getter(self):
+        self.ensure_parsed()
+        return self.properties[section]
+    def setter(self, value):
+        self.properties[section] = value
+    return property(getter, setter, doc="Hero %s property, parsed from file data on demand." % section)
+
+
 class Hero(object):
+
+    ## Hero property sections, parsed from hero file data on first access
+    stats     = make_property_accessor("stats")
+    skills    = make_property_accessor("skills")
+    army      = make_property_accessor("army")
+    equipment = make_property_accessor("equipment")
+    inventory = make_property_accessor("inventory")
+    spells    = make_property_accessor("spells")
+    profile   = make_property_accessor("profile")
+
 
     def __init__(self, name, version=None):
         self.name    = name
@@ -535,21 +559,23 @@ class Hero(object):
         self.index   = None    # Hero index in savefile
         self.span    = None    # Hero byte span in uncompressed savefile
         self.name_counter = 1  # 1-based index for hero name, tracking duplicate names
+        self.savefile = None   # metadata.Savefile this hero was populated from, if any
+        self.parsed   = False  # Whether hero bytes have been parsed to properties
 
-        self.profile   = Profile   .factory(version)
-        self.stats     = Attributes.factory(version)
-        self.skills    = Skills    .factory(version)
-        self.army      = Army      .factory(version)
-        self.equipment = Equipment .factory(version)
-        self.inventory = Inventory .factory(version)
-        self.spells    = Spells    .factory(version)
+        ## All properties in one structure
+        self.properties = AttrDict([
+            ("stats",     Attributes.factory(version)),
+            ("skills",    Skills    .factory(version)),
+            ("army",      Army      .factory(version)),
+            ("equipment", Equipment .factory(version)),
+            ("inventory", Inventory .factory(version)),
+            ("spells",    Spells    .factory(version)),
+            ("profile",   Profile   .factory(version)),
+        ])
         ## Primary attributes without artifact bonuses, to track changes beyond attribute range
         self.basestats = {}
         ## Primary attributes as used in-game, constrained below 100
         self.gamestats = {}
-
-        ## All properties in one structure
-        self.properties = AttrDict((k, getattr(self, k)) for k in list(PROPERTIES))
         ## Deep copy of initial or saved properties, for tracking unsaved changes
         self.original = AttrDict((k, v.copy()) for k, v in self.properties.items())
         ## Deep copy of initial or realized properties, for tracking unrealized changes
@@ -561,21 +587,23 @@ class Hero(object):
 
     def copy(self):
         """Returns a copy of this hero."""
+        self.ensure_parsed()
         hero = Hero(self.name, self.version)
         hero.update(self)
         hero.original = AttrDict((k, v.copy()) for k, v in self.original.items())
-        hero.set_file_data(self.bytes, self.index, self.span)
+        hero.set_file_data(self.bytes, self.index, self.span, self.savefile)
+        hero.parsed = True
         hero.name_counter = self.name_counter
         return hero
 
 
     def update(self, hero):
         """Replaces hero properties with those of given hero."""
+        hero.ensure_parsed()
+        self.parsed = True  # Properties now come from given hero, not from own unparsed bytes
         for section in PROPERTIES:
             if section not in hero.properties: continue # for section
-            prop2 = hero.properties[section].copy()
-            self.properties[section] = prop2
-            setattr(self, section, prop2)
+            self.properties[section] = hero.properties[section].copy()
         self.realized = AttrDict((k, v.copy()) for k, v in self.properties.items())
         self.ensure_primary_stats(force=True)
 
@@ -621,19 +649,30 @@ class Hero(object):
         return (self.name, self.name_counter) if self.name_counter > 1 else self.name
 
 
-    def set_file_data(self, bytes, index, span): #, savefile):
-        """Sets data on hero raw content and position in savefile."""
-        self.bytes  = copy.copy(bytes)
-        self.bytes0 = copy.copy(bytes)
-        self.index  = index
-        self.span   = span
+    def set_file_data(self, bytes, index, span, savefile=None):
+        """Sets data on hero raw content and position in savefile, marks hero as needing parse."""
+        self.bytes    = copy.copy(bytes)
+        self.bytes0   = copy.copy(bytes)
+        self.index    = index
+        self.span     = span
+        self.savefile = savefile
+        self.parsed   = False
         self.serialed = AttrDict((k, v.copy()) for k, v in self.properties.items())
 
 
-    def parse(self, savefile):
-        """Parses hero bytes to properties."""
+    def ensure_parsed(self):
+        """Parses hero bytes to properties if not already parsed, returns whether parsed now."""
+        if self.parsed or not self.bytes or self.savefile is None: return False
+        self.parse(self.savefile)
+        return True
+
+
+    def parse(self, savefile=None):
+        """Parses hero bytes to properties, from given savefile or the one hero came from."""
+        self.parsed = True  # Set upfront: property access during parse must not recurse here
+        savefile = self.savefile = savefile if savefile is not None else self.savefile
         for section, module in PROPERTIES.items():
-            prop = getattr(self, section)
+            prop = self.properties[section]
             state = module.parse(self.bytes, self.version, savefile, self.span)
             if isinstance(prop, list): prop[:] = state
             else:
@@ -643,6 +682,8 @@ class Hero(object):
         self.original = AttrDict((k, v.copy()) for k, v in self.properties.items())
         self.realized = AttrDict((k, v.copy()) for k, v in self.properties.items())
         self.serialed = AttrDict((k, v.copy()) for k, v in self.properties.items())
+        logger.debug("Parsed hero %s from %s.", self.get_name_ident(), self.savefile.filename
+                     if self.savefile else "file data")
 
 
     def serialize(self):
@@ -661,7 +702,7 @@ class Hero(object):
         errors = [] # [error message, ]
         self.ensure_primary_stats()
         for section in PROPERTIES:
-            prop = getattr(self, section)
+            prop = self.properties[section]
             if prop == self.realized[section]: continue # for section
             try: prop.realize(self)
             except Exception as e:
@@ -701,6 +742,7 @@ class Hero(object):
         @param   keywords  specific keywords to match, like "army" or "skill" or "spell";
                            each value may be a collection of values like list or tuple
         """
+        self.ensure_parsed()
         matches = set() # {patterns that found match}
         text_regexes = [re.compile(re.escape(str(t)), re.IGNORECASE) for t in texts]
         kw_regexes = {}

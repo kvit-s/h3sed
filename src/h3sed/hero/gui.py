@@ -108,7 +108,7 @@ class HeroPlugin(object):
         self._heropanel  = None    # Container for all components of selected hero
         self._propspanel = None    # Container for hero property components
         self._hero       = None    # Currently selected Hero instance
-        self._hero_yamls = {}      # {hero: {full, originals, currents}}
+        self._hero_yamls = {}      # Lazy cache as {hero: {full, originals, currents}}
         self._pages_visited = []   # Visited tabs, as [hero index in self._heroes or None if index page]
         self._subtab_focus = {}    # {hero index in self._heroes: focused subtab index}
         self._ignore_events = False  # For ignoring change events from programmatic selections et al
@@ -117,6 +117,7 @@ class HeroPlugin(object):
             "html":      "",       # Current hero search results HTML
             "text":      "",       # Current search text
             "stale":     True,     # Whether should repopulate index before display
+            "listing":   False,    # Whether full hero listing is shown instead of landing text
             "timer":     None,     # wx.Timer for filtering heroes index
             "ids":       {},       # {category: wx ID for toolbar toggle}
             "visible":   [],       # List of heroes visible, ordered by name
@@ -313,8 +314,8 @@ class HeroPlugin(object):
         self._heropanel.Hide()
         self._panel.Thaw()
         self._ctrls["properties"] = nb
-        with controls.BusyPanel(self._panel, __("Loading heroes.")):
-            self.populate_index()
+        self._index["visible"] = self._heroes[:]  # Until narrowed down by an actual listing
+        self.populate_index()
 
 
     def rebuild(self):
@@ -403,7 +404,7 @@ class HeroPlugin(object):
                     continue  # for index, hero
 
                 hero.mark_saved()
-                self._hero_yamls[hero] = templates.make_hero_yamls(hero)
+                self._hero_yamls.pop(hero, None)  # Remade on demand
                 page = next((p for p, i in self._pages.items() if i == index), None)
                 if page is not None:
                     heroes_open.append(hero)
@@ -462,10 +463,34 @@ class HeroPlugin(object):
             self._panel.Thaw()
 
 
-    def populate_index(self, focus=False, force=False):
-        """Populates heroes index page, filtered by current search if any."""
+    def get_hero_yamls(self, hero):
+        """
+        Returns YAML texts for hero as {full, originals, currents}.
+
+        Made and cached on first request, as making them for every hero in file
+        would slow down opening the file considerably.
+        """
+        if hero not in self._hero_yamls:
+            self._hero_yamls[hero] = templates.make_hero_yamls(hero)
+        return self._hero_yamls[hero]
+
+
+    def populate_index(self, focus=False, force=False, listing=False):
+        """
+        Populates heroes index page, filtered by current search if any.
+
+        Shows a short landing text instead while the full listing has not been
+        asked for, as listing every hero requires parsing every hero in the file.
+
+        @param   listing  whether to switch from landing text to the full listing
+        """
         if not self._panel: return
         html, searchtext = self._ctrls["html"], self._ctrls["search"].Value.strip()
+        if listing or searchtext: self._index["listing"] = True
+        if not self._index["listing"]:
+            self.populate_index_landing()
+            if focus: self.select_index()
+            return
         if not self._index["stale"] and not force \
         and self._index["text"] == searchtext and self._index["herotexts"]:
             return
@@ -477,9 +502,8 @@ class HeroPlugin(object):
         maketexts = lambda h: {c: tpl.expand(hero=h, category=c, **tplargs).lower()
                                for c in (["name"] + templates.HERO_PROPERTY_CATEGORIES)}
         if not self._index["herotexts"]:
-            for hero in heroes:
-                self._hero_yamls[hero] = templates.make_hero_yamls(hero)
-            self._index["herotexts"] = [maketexts(h) for h in heroes]
+            with controls.BusyPanel(self._panel, __("Loading heroes.")):
+                self._index["herotexts"] = [maketexts(h) for h in heroes]
         elif self._hero:
             index = next(i for i, h in enumerate(self._heroes) if h == self._hero)
             self._index["herotexts"][index] = maketexts(self._hero)
@@ -513,11 +537,26 @@ class HeroPlugin(object):
             self.select_index()
 
 
+    def populate_index_landing(self):
+        """Populates index page with landing text prompting to select a hero."""
+        page = step.Template(templates.HERO_LANDING_HTML, escape=True).expand(
+            count=len(self._heroes), savefile=self.savefile)
+        self._ctrls["count"].Label = "%s %s" % (
+            len(self._heroes), __(util.plural("hero", self._heroes, numbers=False)))
+        html = self._ctrls["html"]
+        if page != self._index["html"]:
+            self._index["html"] = page
+            html.SetPage(page)
+        html.BackgroundColour = controls.ColourManager.GetColour(wx.SYS_COLOUR_WINDOW)
+        html.ForegroundColour = controls.ColourManager.GetColour(wx.SYS_COLOUR_BTNTEXT)
+        self._index["stale"] = False
+
+
     def on_copy_hero(self, event=None):
         """Handler for copying a hero, adds hero data to clipboard."""
         if self._hero and wx.TheClipboard.Open():
             content = "%s:%s" % (templates.encode_yaml_scalar(self._hero.name), os.linesep)
-            content += self._hero_yamls[self._hero]["full"]
+            content += self.get_hero_yamls(self._hero)["full"]
             d = wx.TextDataObject(content)
             wx.TheClipboard.SetData(d), wx.TheClipboard.Close()
             guibase.status("Copied hero %s data to clipboard.", self._hero,
@@ -543,7 +582,7 @@ class HeroPlugin(object):
         """Handler for saving a hero, sends event to save current hero span."""
         changes = ""
         if self._hero.is_changed():
-            yamls = self._hero_yamls[self._hero]
+            yamls = self.get_hero_yamls(self._hero)
             pairs = [(v1, v2) for v1, v2 in zip(yamls["originals"], yamls["currents"]) if v1 != v2]
             tpl = step.Template(templates.HERO_DIFF_TEXT)
             changes = tpl.expand(name=self._hero.name, changes=pairs)
@@ -559,10 +598,11 @@ class HeroPlugin(object):
 
         tpl = step.Template(templates.HERO_CHARSHEET_HTML, escape=True)
         mode = "normal"
-        texts, htmls = {"normal": self._hero_yamls[self._hero]["full"]}, {}
+        yamls = self.get_hero_yamls(self._hero)
+        texts, htmls = {"normal": yamls["full"]}, {}
         if self._hero.is_changed():
             for k in ("currents", "originals"):
-                texts[k] = self._hero_yamls[self._hero][k]
+                texts[k] = yamls[k]
         tplargs = dict(name=str(self._hero), texts=texts)
         htmls["normal"] = tpl.expand(**tplargs)
         if self._hero.is_changed():
@@ -665,6 +705,7 @@ class HeroPlugin(object):
         """Handler for clicking a link in index page, opens hero or sorts index."""
         href = event.GetLinkInfo().Href
         if href.isnumeric(): self.select_hero(int(href))
+        elif "listing" == href: self.populate_index(force=True, listing=True)
         elif href.startswith("sort:"):
             col = href[len("sort:"):]
             if self._index["sort_col"] == col:
@@ -902,7 +943,7 @@ class HeroPlugin(object):
                 if pluginmap[category].load_state(state):
                     changeds.append(category)
             self._hero.realize()
-            self._hero_yamls[self._hero] = templates.make_hero_yamls(self._hero)
+            self._hero_yamls.pop(self._hero, None)  # Remade on demand
             if "equipment" in changeds and "stats" not in changeds:
                 changeds.append("stats") # Artifact bonus texts may need refreshing
             if changeds:
@@ -933,7 +974,7 @@ class HeroPlugin(object):
         if self._hero != hero:
             self._hero = self._heroes[index]
         self._hero.update(hero)
-        self._hero_yamls[self._hero] = templates.make_hero_yamls(self._hero)
+        self._hero_yamls.pop(self._hero, None)  # Remade on demand
         combo.SetSelection(index)
 
 
@@ -943,7 +984,7 @@ class HeroPlugin(object):
         changes, tpl = [], step.Template(TEMPLATE, escape=html, strip=html)
         for hero in self._heroes:
             if not hero.is_changed(): continue # for hero
-            yamls = self._hero_yamls[hero]
+            yamls = self.get_hero_yamls(hero)
             pairs = [(v1, v2) for v1, v2 in zip(yamls["originals"], yamls["currents"]) if v1 != v2]
             changes.append(tpl.expand(name=str(hero), changes=pairs))
         return "\n".join(changes)
@@ -965,7 +1006,7 @@ class HeroPlugin(object):
         self._hero.serialize()
         self.savefile.patch(self._hero.bytes, self._hero.span)
 
-        self._hero_yamls[self._hero] = templates.make_hero_yamls(self._hero)
+        self._hero_yamls.pop(self._hero, None)  # Remade on demand
 
         title = "%s%s" % (self._hero, "*" if self._hero.is_changed() else "")
         index = next(i for i, h in enumerate(self._heroes) if h == self._hero)

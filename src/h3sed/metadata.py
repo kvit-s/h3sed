@@ -1394,7 +1394,13 @@ class Savefile(object):
 
 
     def read(self, parse_heroes=True):
-        """Reads in file raw contents and main attributes."""
+        """
+        Reads in file raw contents and main attributes.
+
+        @param   parse_heroes  whether to parse all hero properties right away;
+                               heroes are always populated with raw data, and parse
+                               their own properties on first access if not done here
+        """
         with patch_gzip_for_partial():
             with gzip.GzipFile(self.filename, "rb") as f: raw = bytearray(f.read())
         self.raw0 = self.raw = raw
@@ -1402,6 +1408,7 @@ class Savefile(object):
         self.heroes = []
         self.detect_version()
         self.parse_metadata()
+        self.populate_heroes()
         if parse_heroes: self.parse_heroes()
         self.update_info()
         logger.info("Opened %s (%s, unzipped %s).", self.filename,
@@ -1482,12 +1489,17 @@ class Savefile(object):
 
     def parse_heroes(self):
         """Populates and parses all savefile heroes in detail."""
-        if not self.heroes: self.populate_heroes()
-        for hero in self.heroes: hero.parse(self)
+        self.populate_heroes()
+        for hero in self.heroes: hero.ensure_parsed()
 
 
     def populate_heroes(self):
-        """Populates raw data on savefile heroes."""
+        """
+        Populates raw data on savefile heroes, if not already populated.
+
+        Heroes parse their own detailed properties from raw data on first access.
+        """
+        if self.heroes: return
         heroes = []
 
         rgx_strip = re.compile(br"^(?!\xFF+\x00+$)([^\x00-\x19]+)\x00+$")
@@ -1504,7 +1516,7 @@ class Savefile(object):
                 blob = bytearray(self.raw[pos + start:pos + end])
                 name = util.to_unicode(rgx_strip.match(m.group("name")).group(1))
                 hero = h3sed.hero.Hero(name, version=self.version_id)
-                hero.set_file_data(blob, len(heroes), (start + pos, end + pos))
+                hero.set_file_data(blob, len(heroes), (start + pos, end + pos), self)
                 heroes.append(hero)
                 pos += end
             else:

@@ -520,6 +520,25 @@ category = get("category")
 
 
 """
+HTML text shown in heroes index before the full listing has been asked for.
+
+@param   count     total number of heroes in savefile
+@param   savefile  metadata.Savefile instance
+"""
+HERO_LANDING_HTML = """<%
+from h3sed import conf
+from h3sed.lib.i18n import translate as __
+%>
+<font face="{{ conf.HtmlFontName }}" color="{{ conf.FgColour }}">
+<br /><br />
+&nbsp;&nbsp;{{ __("Select a hero from the dropdown above to load it.") }}
+<br /><br />
+&nbsp;&nbsp;<a href="listing"><font color="{{ conf.LinkColour }}">{{ __("Show all %s heroes", count) }}</font></a>
+</font>
+"""
+
+
+"""
 HTML text shown in heroes index.
 
 @param   heroes      [Hero instance, ]
