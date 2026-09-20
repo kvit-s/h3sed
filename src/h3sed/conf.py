@@ -46,8 +46,33 @@ else:
     TranslationDirectory = os.path.join(ApplicationDirectory, "etc", "i18n")
     EtcDirectory = os.path.join(ApplicationDirectory, "etc")
 
+"""Shipped configuration, read once to seed settings if the user has none yet."""
+SeedConfigFile = "%s.ini" % os.path.join(EtcDirectory, Name.lower())
+
+
+def default_config_file():
+    """
+    Returns the path settings are written to.
+
+    A frozen build stays portable and keeps its settings beside the executable.
+    Running from source or from an installed package writes to the user's own
+    config directory instead: the source tree is usually a git checkout, where
+    saved settings would show up as local modifications carrying the paths of
+    every savegame opened, and site-packages may not even be writable.
+    """
+    if Frozen: return SeedConfigFile
+    if "win32" == sys.platform:
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    elif "darwin" == sys.platform:
+        base = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or \
+               os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, Name, "%s.ini" % Name.lower())
+
+
 """Name of file where FileDirectives are kept."""
-ConfigFile = "%s.ini" % os.path.join(EtcDirectory, Name.lower())
+ConfigFile = default_config_file()
 
 """List of attribute names that can be saved to and loaded from ConfigFile."""
 FileDirectives = [
@@ -233,7 +258,9 @@ def load():
                 value = value_raw
             return value, True
 
-        with open(ConfigFile, "r") as f:
+        # Fall back to the shipped settings until the user has saved their own
+        path = ConfigFile if os.path.isfile(ConfigFile) else SeedConfigFile
+        with open(path, "r") as f:
             txt = f.read()
         try: txt = txt.decode()
         except Exception: pass
@@ -257,6 +284,8 @@ def save():
     parser.optionxform = str # Force case-sensitivity on names
     parser.add_section(section)
     try:
+        folder = os.path.dirname(ConfigFile)
+        if folder and not os.path.isdir(folder): os.makedirs(folder)
         f = open(ConfigFile, "w")
         f.write("# %s configuration written on %s.\n" %
                 (Title, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
