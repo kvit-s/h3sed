@@ -17,6 +17,7 @@ try: import wx
 except ImportError: wx = None
 
 import h3sed
+from .. lib import controls
 from .. lib import util
 from .. lib.i18n import format_nested, translate as __
 from .. import conf
@@ -147,13 +148,13 @@ class ArmyPlugin(object):
                         labels = [__(x) for x in choices]
                         choices, labels = zip(*sorted(zip(choices, labels), key=lambda x: x[1].lower()))
 
-                        if list(labels) != ctrl.GetItems():
-                            ctrl.SetItems(labels)
-                            for j, x in enumerate(choices): ctrl.SetClientData(j, x)
-                        else: ctrl.Value = ""
+                        if list(labels) != controls.get_combo_labels(ctrl):
+                            controls.set_combo_choices(ctrl, choices, labels)
+                        else: controls.set_combo_value(ctrl, "")
                         creature = value
                     else: ctrl.Show(not creature if "window" == prop.get("type") else bool(creature))
-                    if value is not None and hasattr(ctrl, "Value"): ctrl.Value = __(value)
+                    if value is not None and hasattr(ctrl, "Value"):
+                        controls.set_combo_value(ctrl, __(value))
         else:
             self._ctrls, result = h3sed.gui.build(self, self._panel)[0], True
             # Hide count controls where no creature type selected

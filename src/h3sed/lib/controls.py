@@ -1584,3 +1584,55 @@ def resize_img(img, size, aspect_ratio=True, bg=(-1, -1, -1)):
         if result is img: result = result.Copy()
         result.Resize(size, align_pos, *bg)
     return result.ConvertToBitmap() if isinstance(img, wx.Bitmap) else result
+def set_combo_choices(ctrl, choices, labels, value=None):
+    """
+    Assigns choices to a combobox, inserting the items only when the dropdown is first used.
+
+    Filling a combobox with a few hundred items costs tens of milliseconds, which adds up
+    to seconds in a panel with dozens of them, like hero inventory with a slot per artifact.
+    Until the control is focused or dropped down, it holds its current value alone.
+
+    @param   choices  data values for combobox items
+    @param   labels   display labels for combobox items, in the same order as choices
+    @param   value    label to show as current value, if any
+    """
+    ctrl._choices, ctrl._labels, ctrl._populated = list(choices), list(labels), False
+    if not getattr(ctrl, "_choices_bound", False):
+        ctrl._choices_bound = True
+        filler = lambda event: (event.Skip(), populate_combo(event.EventObject))
+        ctrl.Bind(wx.EVT_SET_FOCUS, filler)
+        ctrl.Bind(wx.EVT_COMBOBOX_DROPDOWN, filler)
+    ctrl.SetItems([])
+    set_combo_value(ctrl, value if value is not None else "")
+
+
+def populate_combo(ctrl):
+    """Inserts all deferred items into a combobox, if not already inserted."""
+    if getattr(ctrl, "_populated", True): return
+    ctrl._populated = True
+    value = ctrl.Value
+    ctrl.SetItems(ctrl._labels)
+    for j, x in enumerate(ctrl._choices): ctrl.SetClientData(j, x)
+    if value in ctrl._labels: ctrl.Value = value
+
+
+def get_combo_labels(ctrl):
+    """Returns the labels a combobox has been given, whether inserted yet or not."""
+    labels = getattr(ctrl, "_labels", None)
+    return list(labels) if labels is not None else list(ctrl.GetItems())
+
+
+def set_combo_value(ctrl, label):
+    """
+    Sets the current value of a combobox, inserting the item first if items are deferred.
+
+    Does nothing special for controls without deferred items, or for controls
+    that are not comboboxes at all.
+    """
+    if getattr(ctrl, "_populated", True):
+        ctrl.Value = label
+        return
+    index = ctrl._labels.index(label) if label in ctrl._labels else None
+    ctrl.SetItems([label])
+    ctrl.SetClientData(0, ctrl._choices[index] if index is not None else label)
+    ctrl.Value = label

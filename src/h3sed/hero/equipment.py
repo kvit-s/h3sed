@@ -17,6 +17,7 @@ try: import wx
 except ImportError: wx = None
 
 import h3sed
+from .. lib import controls
 from .. lib import util
 from .. lib.i18n import format_nested, translate as __
 from .. import conf
@@ -253,10 +254,10 @@ class EquipmentPlugin(object):
                 choices, labels = zip(*sorted(zip(choices, labels), key=lambda x: x[1].lower()))
 
                 ctrl = self._ctrls[name]
-                if list(labels) != ctrl.GetItems():
-                    ctrl.SetItems(labels)
-                    for j, x in enumerate(choices): ctrl.SetClientData(j, x)
-                ctrl.Value = self.format_artifact(value) or ""
+                label = self.format_artifact(value) or ""
+                if list(labels) != controls.get_combo_labels(ctrl):
+                    controls.set_combo_choices(ctrl, choices, labels, label)
+                else: controls.set_combo_value(ctrl, label)
                 infoctrl = self._ctrls["%s-info" % name]
                 infoctrl.Label = self.format_stats_bonus(prop)
                 infoctrl.ToolTip = infoctrl.Label
@@ -397,17 +398,16 @@ class EquipmentPlugin(object):
                 if not ctrl.Enabled:
                     labels = self.format_artifact(choices)
                     choices, labels = zip(*sorted(zip(choices, labels), key=lambda x: x[1].lower()))
-                    if list(labels) != ctrl.GetItems():
-                        ctrl.SetItems(labels)
-                        for j, x in enumerate(choices): ctrl.SetClientData(j, x)
-                    ctrl.Value = self.format_artifact(artifact) or ""
+                    label = self.format_artifact(artifact) or ""
+                    if list(labels) != controls.get_combo_labels(ctrl):
+                        controls.set_combo_choices(ctrl, choices, labels, label)
+                    else: controls.set_combo_value(ctrl, label)
                     ctrl.Enable()
 
                 if not artifact and location in reserved_locations:
                     combo_artifact = self._state[reserved_locations[location]]
                     label = __("<taken by %s>", __(combo_artifact))
-                    ctrl.SetItems([label])
-                    ctrl.Value = label
+                    controls.set_combo_choices(ctrl, [label], [label], label)
                     ctrl.Disable()
         finally: self._panel.Thaw()
 

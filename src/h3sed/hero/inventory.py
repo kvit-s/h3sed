@@ -17,6 +17,7 @@ try: import wx
 except ImportError: wx = None
 
 import h3sed
+from .. lib import controls
 from .. lib import util
 from .. lib.i18n import format_nested, translate as __
 from .. import conf
@@ -124,13 +125,12 @@ class InventoryPlugin(object):
             ARTIFACTS = metadata.Store.get("artifacts", category="inventory", version=self.version)
             choices, labels = [""] + ARTIFACTS, [""] + self.format_artifact(ARTIFACTS)
             choices, labels = zip(*sorted(zip(choices, labels), key=lambda x: x[1].lower()))
-            do_reset = False if list(labels) == self._ctrls[0].GetItems() else True
+            do_reset = list(labels) != controls.get_combo_labels(self._ctrls[0])
 
             for i, value in enumerate(self._state):
-                if do_reset:
-                    self._ctrls[i].SetItems(labels)
-                    for j, x in enumerate(choices): self._ctrls[i].SetClientData(j, x)
-                self._ctrls[i].Value = self.format_artifact(value) or ""
+                label = self.format_artifact(value) or ""
+                if do_reset: controls.set_combo_choices(self._ctrls[i], choices, labels, label)
+                else: controls.set_combo_value(self._ctrls[i], label)
                 sibling = self._ctrls[i].GetNextSibling()
                 while sibling and not isinstance(sibling, wx.StaticText):
                     sibling = sibling.GetNextSibling()
