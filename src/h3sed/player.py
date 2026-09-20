@@ -94,7 +94,7 @@ class PlayerPlugin(object):
 
         asksizer.Add(intro,     border=10, flag=wx.LEFT | wx.TOP | wx.RIGHT)
         asksizer.Add(rowsizer,  border=10, flag=wx.ALL)
-        asksizer.Add(status,    border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.GROW)
+        asksizer.Add(status,    border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
         asksizer.Add(pickpanel, border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
         pickpanel.Hide()
 
@@ -143,8 +143,8 @@ class PlayerPlugin(object):
         ColourManager.Manage(note, "ForegroundColour", wx.SYS_COLOUR_GRAYTEXT)
 
         editsizer.Add(headsizer,   border=10, flag=wx.ALL | wx.GROW)
-        editsizer.Add(warning,     border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.GROW)
-        editsizer.Add(heroes,      border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.GROW)
+        editsizer.Add(warning,     border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
+        editsizer.Add(heroes,      border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
         editsizer.Add(gridsizer,   border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
         editsizer.Add(tavernlabel, border=10, flag=wx.LEFT | wx.RIGHT)
         editsizer.Add(tavernsizer, border=10, flag=wx.LEFT | wx.RIGHT | wx.TOP)
@@ -154,8 +154,25 @@ class PlayerPlugin(object):
         sizer.Add(askpanel,  flag=wx.GROW)
         sizer.Add(editpanel, flag=wx.GROW)
         editpanel.Hide()
+        self._panel.Bind(wx.EVT_SIZE, self.on_size)
         self._panel.Layout()
         self._panel.Thaw()
+
+
+    def on_size(self, event):
+        """Handler for panel resize, re-lays out contents at the new size."""
+        event.Skip()
+        wx.CallAfter(self.relayout)
+
+
+    def relayout(self):
+        """Lays out and repaints panel contents, sizing labels to their text."""
+        if not self._panel: return
+        for panel in (self._askpanel, self._editpanel):
+            if panel and panel.Shown: panel.Layout()
+        self._panel.Layout()
+        self._panel.Refresh()
+        self._panel.Update()
 
 
     def render(self, reparse=False, reload=False, rebuild=False, log=True):
@@ -168,8 +185,7 @@ class PlayerPlugin(object):
         if not self._ctrls or self.savefile.find_players() is None: return
 
         if self._index is None:
-            self._editpanel.Hide(), self._askpanel.Show()
-            self._panel.Layout()
+            self.show_panel(self._askpanel)
             return
 
         values = self.savefile.get_player_resources(self._index)
@@ -196,10 +212,21 @@ class PlayerPlugin(object):
                 if controls.get_combo_labels(ctrl) != labels:
                     controls.set_combo_choices(ctrl, choices, labels, label)
                 else: controls.set_combo_value(ctrl, label)
-            self._askpanel.Hide(), self._editpanel.Show()
-            self._panel.Layout()
+            self.show_panel(self._editpanel)
         finally:
             self._ignore_events = False
+
+
+    def show_panel(self, panel):
+        """Shows one of the plugin panels and hides the other, repainting both."""
+        other = self._editpanel if panel is self._askpanel else self._askpanel
+        self._panel.Freeze()
+        try:
+            other.Hide()
+            panel.Show()
+            self.relayout()
+        finally:
+            self._panel.Thaw()
 
 
     def on_identify(self, event=None):
@@ -209,7 +236,7 @@ class PlayerPlugin(object):
         pickpanel.Hide()
         if not text.isdigit():
             status.Label = __("Enter the gold amount as a plain number.")
-            self._panel.Layout()
+            self.relayout()
             return
 
         self._matches = self.savefile.find_player_by_gold(int(text))
@@ -217,7 +244,7 @@ class PlayerPlugin(object):
             status.Label = __("No player has %s gold in this savegame.", text) + "\n" + \
                            __("Note that the amount can be cut off in the game status bar: "
                               "check it on the town screen.")
-            self._panel.Layout()
+            self.relayout()
             return
 
         if len(self._matches) > 1:
@@ -227,7 +254,7 @@ class PlayerPlugin(object):
             self._ctrls["pick"].SetItems([self.format_player(i) for i in self._matches])
             self._ctrls["pick"].Selection = 0
             pickpanel.Show()
-            self._panel.Layout()
+            self.relayout()
             logger.info("Gold amount %s matches %s players in %s.", text,
                         len(self._matches), self.savefile.filename)
             return
