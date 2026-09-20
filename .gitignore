@@ -10,3 +10,6 @@ build/makeexe.log
 
 # Screenshots for the README are kept, unlike scratch images
 !img/*.png
+
+# Working notes kept beside the code but never published
+notes/
