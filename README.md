@@ -13,6 +13,11 @@ h3sed
 >   want turns up
 > - **resources**: set gold, wood, ore, mercury, sulfur, crystal and gems per player
 >
+> Both are verified against **Horn of the Abyss** as well as Shadow of Death. HotA
+> lays its player records out differently, four bytes longer, which is presumably why
+> no editor handled them; the length is detected per savefile, and an unrecognised
+> layout leaves the Player tab empty rather than reading the wrong bytes.
+>
 > Also different from upstream:
 >
 > - the human player is detected from the savefile, and heroes can be filtered to their own
