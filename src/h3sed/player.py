@@ -275,6 +275,7 @@ class PlayerPlugin(object):
     def select_player(self, index):
         """Sets the player being edited, by 0-based index."""
         self._index, self._original = index, {}
+        self.savefile.player_index = index  # Lets other plugins know whose heroes are whose
         logger.info("Editing player %s in %s.", self.format_player(index), self.savefile.filename)
         self.render()
 
@@ -284,6 +285,7 @@ class PlayerPlugin(object):
         self._ctrls["status"].Label = ""
         self._ctrls["pickpanel"].Hide()
         self._index, self._matches = None, []
+        self.savefile.player_index = None
         self.render()
 
 

@@ -1401,6 +1401,7 @@ class Savefile(object):
         self.size       = 0
         self.usize      = 0
         self.heroes     = []
+        self.player_index = None  # 0-based index of the player the user identified as theirs
         self._players_offset = None  # Byte offset of player records, 0 if looked for and absent
         self.read(parse_heroes)
 

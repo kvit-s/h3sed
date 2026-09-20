@@ -54,7 +54,7 @@ FileDirectives = [
 ]
 """List of user-modifiable attributes, saved if changed from default."""
 OptionalFileDirectives = [
-    "DarkTheme", "FileExtensions", "HeroToggles", "Language", "MaxConsoleHistory",
+    "DarkTheme", "FileExtensions", "HeroesOwnOnly", "HeroToggles", "Language", "MaxConsoleHistory",
     "MaxRecentFiles", "PopupUnexpectedErrors", "Positions", "SavegameNewFormat",
     "StatusFlashLength", "Translations", "UpdateCheckInterval", "UserFunctions",
 ]
@@ -124,6 +124,9 @@ WindowPosition = None
 WindowSize = (700, 820)
 
 """---------------------------- /FileDirectives ----------------------------"""
+
+"""Whether hero selection is limited to the heroes of the identified player."""
+HeroesOwnOnly = False
 
 """Whether logging to log window is enabled."""
 LogEnabled = True

@@ -112,6 +112,7 @@ class HeroPlugin(object):
         self._pages_visited = []   # Visited tabs, as [hero index in self._heroes or None if index page]
         self._subtab_focus = {}    # {hero index in self._heroes: focused subtab index}
         self._subtabs_stale = set()  # Hero property subtabs not built for current hero, as {name}
+        self._combo_state = None   # Signature of what the hero combobox was last filled from
         self._ignore_events = False  # For ignoring change events from programmatic selections et al
         self._index = {
             "herotexts": [],       # [hero contents to search in, as [{category: plaintext}] ]
@@ -199,6 +200,10 @@ class HeroPlugin(object):
 
         tb = wx.ToolBar(heropanel, style=wx.TB_FLAT | wx.TB_NODIVIDER)
 
+        mine = self._ctrls["mine"] = wx.CheckBox(self._panel, label=__("&Only my heroes"))
+        mine.ToolTip = __("Show only the heroes of the player identified on the Player tab")
+        mine.Value = conf.HeroesOwnOnly
+        mine.Bind(wx.EVT_CHECKBOX, self.on_toggle_mine)
         combo.Bind(wx.EVT_COMBOBOX, self.on_select_hero)
         combo.Bind(wx.EVT_KEY_DOWN, self.on_key_select)
 
@@ -249,6 +254,7 @@ class HeroPlugin(object):
         sizer_top = wx.BoxSizer(wx.HORIZONTAL)
         sizer_top.Add(label,  border=10, flag=wx.RIGHT | wx.ALIGN_CENTER)
         sizer_top.Add(combo,  border=5,  flag=wx.TOP  | wx.BOTTOM | wx.GROW)
+        sizer_top.Add(mine,   border=10, flag=wx.LEFT | wx.ALIGN_CENTER_VERTICAL)
         sizer_top.AddStretchSpacer()
         sizer_top.Add(search, border=5, flag=wx.ALL, proportion=1)
         sizer_top.AddSpacer(5)
@@ -288,7 +294,7 @@ class HeroPlugin(object):
         self._propspanel.Sizer.Clear()
         del self._plugins[:]
         self._subtabs_stale.clear()  # Panels are built anew from here on
-        self._ctrls["hero"].SetItems([str(x) for x in self._heroes])
+        self.refresh_hero_combo(force=True)
 
         nb = wx.Notebook(self._propspanel)
         self._plugins = [dict(m.props(), module=m) for m in h3sed.hero.PROPERTIES.values()
@@ -759,8 +765,8 @@ class HeroPlugin(object):
     def on_select_hero(self, event):
         """Handler for selecting a hero in combobox, populates tabs with hero data."""
         if self._ignore_events: return
-        index = event.EventObject.Selection
-        hero2 = self._heroes[index] if index < len(self._heroes) else None
+        index = self.get_combo_hero()
+        hero2 = self._heroes[index] if index is not None and index < len(self._heroes) else None
         if not hero2:
             wx.MessageBox(__("Hero '%s' not found.", event.EventObject.Value),
                           conf.Title, wx.OK | wx.ICON_ERROR)
@@ -817,6 +823,56 @@ class HeroPlugin(object):
         wx.CallLater(100, lambda: self._panel and self._panel.Layout())
 
 
+    def refresh_hero_combo(self, force=False):
+        """
+        Fills the hero selection combobox, filtered to own heroes if so chosen.
+
+        Hero indexes are kept as item client data, as filtering makes item
+        position and hero index differ.
+        """
+        combo, mine = self._ctrls["hero"], self._ctrls["mine"]
+        owned = self.savefile.get_player_heroes(self.savefile.player_index)                 if self.savefile.player_index is not None else []
+        mine.Enable(bool(owned))
+        if not owned: mine.Value = False
+        state = (self.savefile.player_index, mine.Value, len(self._heroes))
+        if not force and state == self._combo_state: return
+        self._combo_state = state
+
+        heroes = [h for h in self._heroes if h in owned] if mine.Value and owned else self._heroes
+        hero0 = self._hero
+        self._ignore_events = True
+        try:
+            combo.SetItems([str(x) for x in heroes])
+            for i, hero in enumerate(heroes):
+                combo.SetClientData(i, self._heroes.index(hero))
+            if hero0 is not None and hero0 in heroes: self.set_combo_hero(self._heroes.index(hero0))
+        finally:
+            self._ignore_events = False
+
+
+    def set_combo_hero(self, index):
+        """Selects the hero by index in the combobox, or clears selection if not listed."""
+        combo = self._ctrls["hero"]
+        for i in range(combo.GetCount()):
+            if combo.GetClientData(i) == index:
+                if combo.Selection != i: combo.SetSelection(i)
+                return
+        if combo.Selection >= 0: combo.SetSelection(-1)
+
+
+    def get_combo_hero(self):
+        """Returns the hero index selected in the combobox, or None."""
+        combo = self._ctrls["hero"]
+        i = combo.Selection
+        return combo.GetClientData(i) if 0 <= i < combo.GetCount() else None
+
+
+    def on_toggle_mine(self, event=None):
+        """Handler for toggling the own-heroes filter, refills the combobox."""
+        conf.HeroesOwnOnly = self._ctrls["mine"].Value
+        self.refresh_hero_combo(force=True)
+
+
     def select_hero(self, index, status=True):
         """
         Populates panel with hero data and ensures hero tab focus.
@@ -837,7 +893,8 @@ class HeroPlugin(object):
 
         self._ignore_events = True
         self._panel.Freeze()
-        combo.SetSelection(index)
+        self.refresh_hero_combo()
+        self.set_combo_hero(index)
         page_existed = index in self._pages.values()
         if not page_existed:
             page = wx.Window(tabs)
@@ -898,8 +955,7 @@ class HeroPlugin(object):
             self._heropanel.Enable()
             self._heropanel.Show()
             self._panel.Layout()
-        if combo.Selection != index:
-            combo.SetSelection(index)
+        self.set_combo_hero(index)
 
 
     def select_index(self):
@@ -907,6 +963,7 @@ class HeroPlugin(object):
         combo, tabs, search = (self._ctrls[k] for k in ("hero", "tabs", "search"))
         searchsel = search.GetSelection()
         focusctrl = self._panel.FindFocus()
+        self.refresh_hero_combo()
         self.populate_index()
         if tabs.GetSelection(): tabs.SetSelection(0)
         style = tabs.GetAGWWindowStyleFlag() & (~wx.lib.agw.flatnotebook.FNB_X_ON_TAB)
@@ -1004,7 +1061,7 @@ class HeroPlugin(object):
             self._hero = self._heroes[index]
         self._hero.update(hero)
         self._hero_yamls.pop(self._hero, None)  # Remade on demand
-        combo.SetSelection(index)
+        self.set_combo_hero(index)
 
 
     def get_changes(self, html=True):
