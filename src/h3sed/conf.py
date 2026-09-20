@@ -26,8 +26,10 @@ import sys
 """Program title, version number and version date."""
 Name = "h3sed"
 Title = "Heroes3 Savegame Editor"
-Version = "3.8"
-VersionDate = "07.09.2026"
+# Fork builds carry a PEP 440 local version, so that the About box, the config
+# file and the built executable name say which of the two h3seds this is.
+Version = "3.8+kvit1"
+VersionDate = "20.09.2026"
 
 Frozen = getattr(sys, "frozen", False)
 if Frozen:
