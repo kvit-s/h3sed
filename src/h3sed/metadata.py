@@ -62,6 +62,13 @@ PLAYER_COUNT, PLAYER_SIZE = 8, 145
 """Maximum values accepted when recognizing a player resource block."""
 PLAYER_RESOURCE_MAX, PLAYER_GOLD_MAX = 100000, 100000000
 
+"""Byte offsets relative to a player resource block, and slot counts."""
+PLAYER_HEROES_OFFSET, PLAYER_HERO_SLOTS = -95, 8  # Heroes the player owns, 0xFF for empty slot
+PLAYER_TAVERN_OFFSET, PLAYER_TAVERN_SLOTS = -87, 2  # Heroes offered in taverns, 0xFF for none
+
+"""Value marking an empty hero slot."""
+NO_HERO = 0xFF
+
 
 """Hero skills, in file order."""
 SKILLS = [
@@ -1607,6 +1614,56 @@ class Savefile(object):
         self.patch(struct.pack("<%dI" % len(PLAYER_RESOURCES), *values.values()), span)
         logger.info("Set player %s resources in %s to %s.", index + 1, self.filename,
                     ", ".join("%s=%s" % kv for kv in values.items()))
+
+
+    def get_hero_ids(self):
+        """Returns heroes by their identifier in savefile, as {id: Hero}."""
+        self.populate_heroes()
+        return {h.index: h for h in self.heroes}
+
+
+    def get_player_heroes(self, index):
+        """Returns heroes owned by player by 0-based index, as [Hero, ]."""
+        return self._read_hero_slots(index, PLAYER_HEROES_OFFSET, PLAYER_HERO_SLOTS)
+
+
+    def get_player_tavern(self, index):
+        """Returns heroes offered in taverns to player by 0-based index, as [Hero or None, ]."""
+        return self._read_hero_slots(index, PLAYER_TAVERN_OFFSET, PLAYER_TAVERN_SLOTS,
+                                     keep_empty=True)
+
+
+    def set_player_tavern(self, index, heroes):
+        """
+        Patches savefile with heroes offered in taverns to player by 0-based index.
+
+        @param   heroes  [Hero or hero identifier or None, ] for each tavern slot
+        """
+        offset = self.find_players()
+        if offset is None or not 0 <= index < PLAYER_COUNT: return
+        pos = offset + PLAYER_SIZE * index + PLAYER_TAVERN_OFFSET
+        values = bytearray(self.raw[pos:pos + PLAYER_TAVERN_SLOTS])
+        for i, hero in enumerate(heroes[:PLAYER_TAVERN_SLOTS]):
+            value = hero.index if isinstance(hero, h3sed.hero.Hero) else hero
+            values[i] = NO_HERO if value is None else value
+        self.patch(values, (pos, pos + PLAYER_TAVERN_SLOTS))
+        logger.info("Set player %s tavern heroes in %s to %s.", index + 1, self.filename,
+                    ", ".join(str(x) for x in self.get_player_tavern(index)))
+
+
+    def _read_hero_slots(self, index, offset_delta, count, keep_empty=False):
+        """Returns heroes in a slot array of the player record, as [Hero or None, ]."""
+        offset = self.find_players()
+        if offset is None or not 0 <= index < PLAYER_COUNT: return []
+        pos = offset + PLAYER_SIZE * index + offset_delta
+        heroes = self.get_hero_ids()
+        result = []
+        for i in range(count):
+            value = self.raw[pos + i]
+            if value == NO_HERO:
+                if keep_empty: result.append(None)
+            else: result.append(heroes.get(value))
+        return result
 
 
     def find_player_by_gold(self, gold):

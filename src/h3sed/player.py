@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Player plugin for savefile page, shows and edits player resources like gold.
+Player plugin for savefile page, shows and edits player resources and tavern heroes.
 
 Savefile does not record which player slot the human plays, so the player is
 identified by the amount of gold the user sees in game.
@@ -18,6 +18,7 @@ import logging
 import wx
 
 import h3sed
+from . lib import controls
 from . lib.controls import ColourManager
 from . lib.i18n import translate as __
 from . import metadata
@@ -37,13 +38,20 @@ class PlayerPlugin(object):
         self._index     = None   # 0-based index of identified player, if any
         self._matches   = []     # Player indexes matching the gold amount given
         self._ctrls     = {}     # {name: wx.Control}
-        self._original  = {}     # {resource name: value} as loaded or last saved
+        self._original  = {}     # Resources and tavern as loaded or last saved
         self._ignore_events = False
         self.prebuild()
 
 
+    def format_player(self, index, with_heroes=True):
+        """Returns label for player by 0-based index, with owned heroes if any."""
+        label = __("Player %s (%s)", index + 1, __(metadata.PLAYER_COLOURS[index]))
+        heroes = self.savefile.get_player_heroes(index) if with_heroes else []
+        return "%s - %s" % (label, ", ".join(map(str, heroes))) if heroes else label
+
+
     def prebuild(self):
-        """Builds UI components: player identification prompt and resource fields."""
+        """Builds UI components: player identification prompt and editing fields."""
         self._panel.Freeze()
         self._panel.DestroyChildren()
         self._panel.Sizer and self._panel.Sizer.Clear()
@@ -52,7 +60,7 @@ class PlayerPlugin(object):
 
         if self.savefile.find_players() is None:
             sizer.Add(wx.StaticText(self._panel, label=
-                      __("Player resources were not recognized in this savegame.")),
+                      __("Player data was not recognized in this savegame.")),
                       border=10, flag=wx.ALL)
             self._panel.Layout(), self._panel.Thaw()
             return
@@ -76,12 +84,12 @@ class PlayerPlugin(object):
         # Shown only when several players hold the same amount of gold
         pickpanel = self._ctrls["pickpanel"] = wx.Panel(askpanel)
         picksizer = pickpanel.Sizer = wx.BoxSizer(wx.HORIZONTAL)
-        picklabel = wx.StaticText(pickpanel, label=__("Choose your colour") + ":")
         choice = self._ctrls["pick"] = wx.Choice(pickpanel)
         pickbutton = wx.Button(pickpanel, label=__("&Use this player"))
         pickbutton.Bind(wx.EVT_BUTTON, self.on_pick_player)
-        picksizer.Add(picklabel, border=5, flag=wx.RIGHT | wx.ALIGN_CENTER_VERTICAL)
-        picksizer.Add(choice,    border=5, flag=wx.RIGHT)
+        picksizer.Add(wx.StaticText(pickpanel, label=__("Choose your player") + ":"),
+                      border=5, flag=wx.RIGHT | wx.ALIGN_CENTER_VERTICAL)
+        picksizer.Add(choice,     border=5, flag=wx.RIGHT)
         picksizer.Add(pickbutton)
 
         asksizer.Add(intro,     border=10, flag=wx.LEFT | wx.TOP | wx.RIGHT)
@@ -104,6 +112,9 @@ class PlayerPlugin(object):
         headsizer.AddStretchSpacer()
         headsizer.Add(change)
 
+        heroes = self._ctrls["heroes"] = wx.StaticText(editpanel)
+        ColourManager.Manage(heroes, "ForegroundColour", wx.SYS_COLOUR_GRAYTEXT)
+
         gridsizer = wx.FlexGridSizer(cols=2, vgap=5, hgap=10)
         for name, label in metadata.PLAYER_RESOURCES.items():
             maximum = metadata.PLAYER_GOLD_MAX if "gold" == name else metadata.PLAYER_RESOURCE_MAX
@@ -115,14 +126,26 @@ class PlayerPlugin(object):
                           flag=wx.ALIGN_CENTER_VERTICAL)
             gridsizer.Add(ctrl)
 
+        tavernlabel = wx.StaticText(editpanel, label=__("Heroes available in taverns") + ":")
+        tavernsizer = wx.BoxSizer(wx.HORIZONTAL)
+        for i in range(metadata.PLAYER_TAVERN_SLOTS):
+            ctrl = self._ctrls["tavern%s" % i] = wx.ComboBox(
+                editpanel, name="tavern%s" % i, size=(160, -1),
+                style=wx.CB_DROPDOWN | wx.CB_READONLY)
+            ctrl.Bind(wx.EVT_COMBOBOX, self.on_change_tavern)
+            tavernsizer.Add(ctrl, border=5, flag=wx.RIGHT)
+
         note = wx.StaticText(editpanel, label=
             __("Changes are saved to file with the usual Save command."))
         ColourManager.Manage(note, "ForegroundColour", wx.SYS_COLOUR_GRAYTEXT)
 
-        editsizer.Add(headsizer, border=10, flag=wx.ALL | wx.GROW)
-        editsizer.Add(warning,   border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.GROW)
-        editsizer.Add(gridsizer, border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
-        editsizer.Add(note,      border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
+        editsizer.Add(headsizer,   border=10, flag=wx.ALL | wx.GROW)
+        editsizer.Add(warning,     border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.GROW)
+        editsizer.Add(heroes,      border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.GROW)
+        editsizer.Add(gridsizer,   border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
+        editsizer.Add(tavernlabel, border=10, flag=wx.LEFT | wx.RIGHT)
+        editsizer.Add(tavernsizer, border=10, flag=wx.ALL)
+        editsizer.Add(note,        border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
 
         sizer.Add(askpanel,  flag=wx.GROW)
         sizer.Add(editpanel, flag=wx.GROW)
@@ -132,7 +155,7 @@ class PlayerPlugin(object):
 
 
     def render(self, reparse=False, reload=False, rebuild=False, log=True):
-        """Populates resource controls from savefile."""
+        """Populates editing controls from savefile."""
         if rebuild:
             index, matches = self._index, self._matches
             self.prebuild()
@@ -146,17 +169,29 @@ class PlayerPlugin(object):
             return
 
         values = self.savefile.get_player_resources(self._index)
-        if not self._original: self._original = dict(values)
+        tavern = self.savefile.get_player_tavern(self._index)
+        if not self._original: self._original = self.get_data()
         self._ignore_events = True
         try:
-            self._ctrls["header"].Label = __("Player %s (%s)", self._index + 1,
-                                             __(metadata.PLAYER_COLOURS[self._index]))
+            self._ctrls["header"].Label = self.format_player(self._index, with_heroes=False)
+            owned = self.savefile.get_player_heroes(self._index)
+            self._ctrls["heroes"].Label = __("Heroes") + ": " + \
+                                          (", ".join(map(str, owned)) if owned else __("none"))
             self._ctrls["warning"].Label = "" if len(self._matches) < 2 else \
                 __("Several players had this amount of gold: make sure this is you "
                    "before saving.")
             self._ctrls["warning"].Show(len(self._matches) > 1)
             for name, value in values.items():
                 if self._ctrls[name].Value != value: self._ctrls[name].Value = value
+
+            choices = [None] + sorted(self.savefile.get_hero_ids().values())
+            labels = [__("none")] + [str(h) for h in choices[1:]]
+            for i, hero in enumerate(tavern):
+                ctrl = self._ctrls["tavern%s" % i]
+                label = str(hero) if hero else __("none")
+                if controls.get_combo_labels(ctrl) != labels:
+                    controls.set_combo_choices(ctrl, choices, labels, label)
+                else: controls.set_combo_value(ctrl, label)
             self._askpanel.Hide(), self._editpanel.Show()
             self._panel.Layout()
         finally:
@@ -183,10 +218,9 @@ class PlayerPlugin(object):
 
         if len(self._matches) > 1:
             status.Label = __("%s players have %s gold.", len(self._matches), text) + "\n" + \
-                           __("Pick your colour below, or spend some gold in game and save "
-                              "again to tell them apart.")
-            self._ctrls["pick"].SetItems(["%s. %s" % (i + 1, __(metadata.PLAYER_COLOURS[i]))
-                                          for i in self._matches])
+                           __("Pick yourself below by the heroes you have, or spend some gold "
+                              "in game and save again to tell them apart.")
+            self._ctrls["pick"].SetItems([self.format_player(i) for i in self._matches])
             self._ctrls["pick"].Selection = 0
             pickpanel.Show()
             self._panel.Layout()
@@ -210,8 +244,7 @@ class PlayerPlugin(object):
     def select_player(self, index):
         """Sets the player being edited, by 0-based index."""
         self._index, self._original = index, {}
-        logger.info("Editing player %s (%s) resources in %s.", index + 1,
-                    metadata.PLAYER_COLOURS[index], self.savefile.filename)
+        logger.info("Editing player %s in %s.", self.format_player(index), self.savefile.filename)
         self.render()
 
 
@@ -234,20 +267,46 @@ class PlayerPlugin(object):
             self.render(reload=True)
             return True
 
-        label = ("%s %s: %s", (__(metadata.PLAYER_COLOURS[self._index]),
-                               __(metadata.PLAYER_RESOURCES[name]), value))
-        self._undoredo.Submit(h3sed.gui.PluginCommand(self, on_do, name=label))
+        self.command(on_do, ("%s %s: %s", (__(metadata.PLAYER_COLOURS[self._index]),
+                                           __(metadata.PLAYER_RESOURCES[name]), value)))
+
+
+    def on_change_tavern(self, event):
+        """Handler for changing a tavern hero, submits an undoable command."""
+        if self._ignore_events or self._index is None: return
+        ctrl = event.EventObject
+        slot = int(ctrl.Name[-1])
+        hero = ctrl.GetClientData(ctrl.Selection) if ctrl.Selection >= 0 else None
+        heroes = list(self.savefile.get_player_tavern(self._index))
+        if len(heroes) > slot and heroes[slot] == hero: return
+        heroes[slot:slot + 1] = [hero]
+
+        def on_do():
+            self.savefile.set_player_tavern(self._index, heroes)
+            self.render(reload=True)
+            return True
+
+        self.command(on_do, ("%s %s: %s", (__(metadata.PLAYER_COLOURS[self._index]),
+                                           __("tavern hero"), str(hero) if hero else __("none"))))
+
+
+    def command(self, callable, name):
+        """Submits an undoable command to the command processor."""
+        self._undoredo.Submit(h3sed.gui.PluginCommand(self, callable, name=name))
 
 
     def get_data(self):
-        """Returns current resources of the player being edited, for undo-redo."""
-        return None if self._index is None else \
-               dict(self.savefile.get_player_resources(self._index))
+        """Returns current state of the player being edited, for undo-redo."""
+        if self._index is None: return None
+        return {"resources": dict(self.savefile.get_player_resources(self._index)),
+                "tavern":    list(self.savefile.get_player_tavern(self._index))}
 
 
     def set_data(self, data):
-        """Restores resources of the player being edited, for undo-redo."""
-        if self._index is not None and data: self.savefile.set_player_resources(self._index, data)
+        """Restores state of the player being edited, for undo-redo."""
+        if self._index is None or not data: return
+        self.savefile.set_player_resources(self._index, data["resources"])
+        self.savefile.set_player_tavern(self._index, data["tavern"])
 
 
     def patch(self):
@@ -261,19 +320,23 @@ class PlayerPlugin(object):
 
 
     def get_changes(self, html=True):
-        """Returns unsaved resource changes as HTML or plain text."""
+        """Returns unsaved player changes as HTML or plain text."""
         if self._index is None or not self._original: return ""
-        values = self.savefile.get_player_resources(self._index)
-        diffs = [(metadata.PLAYER_RESOURCES[k], self._original[k], v)
-                 for k, v in values.items() if self._original.get(k) != v]
+        data, diffs = self.get_data(), []
+        for name, label in metadata.PLAYER_RESOURCES.items():
+            before, after = self._original["resources"][name], data["resources"][name]
+            if before != after: diffs.append((__(label), before, after))
+        fmt = lambda h: str(h) if h else __("none")
+        for i, (before, after) in enumerate(zip(self._original["tavern"], data["tavern"])):
+            if before != after:
+                diffs.append(("%s %s" % (__("tavern hero"), i + 1), fmt(before), fmt(after)))
         if not diffs: return ""
-        title = __("Player %s (%s)", self._index + 1, __(metadata.PLAYER_COLOURS[self._index]))
-        lines = ["%s: %s -> %s" % (__(a), b, c) for a, b, c in diffs]
+        title = self.format_player(self._index, with_heroes=False)
+        lines = ["%s: %s -> %s" % (a, b, c) for a, b, c in diffs]
         if not html: return "%s\n%s\n" % (title, "\n".join(lines))
         return "<b>%s</b><br />%s<br /><br />" % (title, "<br />".join(lines))
 
 
     def mark_saved(self):
         """Resets the record of unsaved changes."""
-        if self._index is not None:
-            self._original = dict(self.savefile.get_player_resources(self._index))
+        if self._index is not None: self._original = self.get_data()
