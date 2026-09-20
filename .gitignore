@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 *.exe
+h3sed.ini
 build/dist/
 build/work/
 build/makeexe.log
