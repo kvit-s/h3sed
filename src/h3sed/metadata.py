@@ -56,8 +56,19 @@ PLAYER_RESOURCES = OrderedDict([
 """Player colours, in file order."""
 PLAYER_COLOURS = ["Red", "Blue", "Tan", "Green", "Orange", "Purple", "Teal", "Pink"]
 
-"""Number of player slots in savefile, and byte length of one player record."""
-PLAYER_COUNT, PLAYER_SIZE = 8, 145
+"""Number of player slots in savefile."""
+PLAYER_COUNT = 8
+
+"""
+Byte lengths a player record is known to have, longest first.
+
+Shadow of Death and its predecessors use 145 bytes; Horn of the Abyss adds four
+bytes ahead of the resources. The length is detected per savefile rather than
+assumed, so an unrecognized layout fails to match instead of reading wrong bytes.
+PLAYER_SIZE remains the default for savefiles not yet examined.
+"""
+PLAYER_SIZES = (149, 145)
+PLAYER_SIZE = PLAYER_SIZES[-1]
 
 """Maximum values accepted when recognizing a player resource block."""
 PLAYER_RESOURCE_MAX, PLAYER_GOLD_MAX = 100000, 100000000
@@ -72,14 +83,20 @@ NO_HERO = 0xFF
 """
 Game versions the player record layout has been verified against.
 
-Player records were worked out from Shadow of Death savegames; the layout may
-differ in other versions, where detection can fail or, less likely, match the
-wrong bytes.
+Player records were worked out from Shadow of Death savegames and checked
+against a Horn of the Abyss one, reading resources, tavern heroes and the human
+player back against known values. Other versions may differ, where detection
+fails or, less likely, matches the wrong bytes.
 """
-PLAYER_VERIFIED_VERSIONS = ["sod"]
+PLAYER_VERIFIED_VERSIONS = ["sod", "hota"]
 
-"""Byte offset of the human-or-computer flag relative to a player resource block."""
-PLAYER_HUMAN_OFFSET = 44
+"""
+Bytes following the resources in a player record.
+
+The human-or-computer flag is the first byte of the record, so its offset from
+the resources is the tail size less the record length, negative in practice.
+"""
+PLAYER_TAIL_SIZE = 44
 PLAYER_HUMAN, PLAYER_COMPUTER = 0, 1
 
 
@@ -1416,6 +1433,7 @@ class Savefile(object):
         self.heroes     = []
         self.player_index = None  # 0-based index of the player the user identified as theirs
         self._players_offset = None  # Byte offset of player records, 0 if looked for and absent
+        self._player_size = None     # Byte length of one player record, once detected
         self.read(parse_heroes)
 
 
@@ -1447,6 +1465,7 @@ class Savefile(object):
         self.mapdata = {}
         self.heroes = []
         self._players_offset = None
+        self._player_size = None
         self.detect_version()
         self.parse_metadata()
         self.populate_heroes()
@@ -1581,10 +1600,11 @@ class Savefile(object):
         """
         Returns byte offset of the player records array, or None if not recognized.
 
-        Savefile holds PLAYER_COUNT player records of PLAYER_SIZE bytes each, back to back,
+        Savefile holds PLAYER_COUNT player records of equal length, back to back,
         every record starting with its resources as unsigned 32-bit little-endian integers
         in PLAYER_RESOURCES order, preceded by a run of 0xFF bytes. The array is not
-        necessarily aligned to any boundary.
+        necessarily aligned to any boundary. The record length differs between game
+        versions, so each length in PLAYER_SIZES is tried and the first that fits is kept.
         """
         if self._players_offset is not None: return self._players_offset or None
         raw, size = self.raw, 4 * len(PLAYER_RESOURCES)
@@ -1599,17 +1619,28 @@ class Savefile(object):
 
         self._players_offset = 0  # Falsy marker for "looked and found nothing"
         # Records follow a run of 0xFF, so only look where such a run ends
-        limit = len(raw) - PLAYER_SIZE * PLAYER_COUNT
+        limit = len(raw) - min(PLAYER_SIZES) * PLAYER_COUNT
         for match in re.finditer(b"\xFF[^\xFF]", bytes(raw[:limit + 1])):
             pos = match.start() + 1
             if resources_at(pos) is None: continue # for match
-            if all(resources_at(pos + PLAYER_SIZE * i) is not None for i in range(1, PLAYER_COUNT)):
-                self._players_offset = pos
-                logger.info("Detected player records at byte %s in %s.", pos, self.filename)
+            for size in PLAYER_SIZES:
+                if all(resources_at(pos + size * i) is not None for i in range(1, PLAYER_COUNT)):
+                    self._players_offset, self._player_size = pos, size
+                    logger.info("Detected player records at byte %s in %s, %s bytes each.",
+                                pos, self.filename, size)
+                    break # for size
+            if self._players_offset:
                 break # for match
         else:
             logger.warning("Failed to detect player records in %s.", self.filename)
         return self._players_offset or None
+
+
+    @property
+    def player_size(self):
+        """Returns byte length of one player record, detected from the savefile."""
+        if self._player_size is None: self.find_players()
+        return self._player_size or PLAYER_SIZE
 
 
     def get_player_resources(self, index):
@@ -1617,7 +1648,7 @@ class Savefile(object):
         offset = self.find_players()
         if offset is None or not 0 <= index < PLAYER_COUNT: return None
         values = struct.unpack_from("<%dI" % len(PLAYER_RESOURCES), self.raw,
-                                    offset + PLAYER_SIZE * index)
+                                    offset + self.player_size * index)
         return OrderedDict(zip(PLAYER_RESOURCES, values))
 
 
@@ -1626,8 +1657,8 @@ class Savefile(object):
         offset = self.find_players()
         if offset is None or not 0 <= index < PLAYER_COUNT: return
         values = OrderedDict(self.get_player_resources(index), **resources)
-        span = (offset + PLAYER_SIZE * index,
-                offset + PLAYER_SIZE * index + 4 * len(PLAYER_RESOURCES))
+        span = (offset + self.player_size * index,
+                offset + self.player_size * index + 4 * len(PLAYER_RESOURCES))
         self.patch(struct.pack("<%dI" % len(PLAYER_RESOURCES), *values.values()), span)
         logger.info("Set player %s resources in %s to %s.", index + 1, self.filename,
                     ", ".join("%s=%s" % kv for kv in values.items()))
@@ -1658,7 +1689,7 @@ class Savefile(object):
         """
         offset = self.find_players()
         if offset is None or not 0 <= index < PLAYER_COUNT: return
-        pos = offset + PLAYER_SIZE * index + PLAYER_TAVERN_OFFSET
+        pos = offset + self.player_size * index + PLAYER_TAVERN_OFFSET
         values = bytearray(self.raw[pos:pos + PLAYER_TAVERN_SLOTS])
         for i, hero in enumerate(heroes[:PLAYER_TAVERN_SLOTS]):
             value = hero.index if isinstance(hero, h3sed.hero.Hero) else hero
@@ -1672,7 +1703,9 @@ class Savefile(object):
         """Returns whether the player by 0-based index is played by a human, or None."""
         offset = self.find_players()
         if offset is None or not 0 <= index < PLAYER_COUNT: return None
-        value = self.raw[offset + PLAYER_SIZE * index + PLAYER_HUMAN_OFFSET]
+        # The flag is the first byte of the record, which precedes the resources
+        value = self.raw[offset + self.player_size * index
+                         + PLAYER_TAIL_SIZE - self.player_size]
         return value == PLAYER_HUMAN if value in (PLAYER_HUMAN, PLAYER_COMPUTER) else None
 
 
@@ -1705,7 +1738,7 @@ class Savefile(object):
         """Returns heroes in a slot array of the player record, as [Hero or None, ]."""
         offset = self.find_players()
         if offset is None or not 0 <= index < PLAYER_COUNT: return []
-        pos = offset + PLAYER_SIZE * index + offset_delta
+        pos = offset + self.player_size * index + offset_delta
         heroes = self.get_hero_ids()
         result = []
         for i in range(count):
