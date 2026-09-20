@@ -1,6 +1,26 @@
 CHANGELOG
 =========
 
+3.8+kvit1, 2026-09-20
+---------------------
+First release of this fork of suurjaak/h3sed. Changes against upstream 3.8:
+
+- keep one savegame open at a time, instead of any number in tabs
+- fix the editor dying after a dozen savegames were opened at once: each open
+  savegame held roughly 875 Windows USER handles, against a per-process limit
+  of 10000, and exhausting the quota made window creation fail
+- parse heroes on demand, and build hero property tabs when first shown,
+  which makes opening a savegame noticeably faster
+- fill artifact dropdowns on first use instead of on building the panel
+- add a Player tab for editing gold and other resources, and tavern heroes
+- detect the human player from the savefile, and lead with the Player tab
+- add an option to list only your own heroes, on by default once a player is known
+- show hero portraits and artifact icons read from the installed game
+- keep settings in the user config directory rather than beside the package
+- reset the Edit menu when closing a savefile tab
+- give links a readable colour in dark mode
+
+
 3.8, 2026-09-07
 ---------------
 - add town type and upgrade/downgrade options to army menus
