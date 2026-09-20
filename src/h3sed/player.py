@@ -37,17 +37,25 @@ class PlayerPlugin(object):
         self._undoredo  = commandprocessor  # wx.CommandProcessor
         self._index     = None   # 0-based index of identified player, if any
         self._matches   = []     # Player indexes matching the gold amount given
+        self._picks     = []     # Player indexes currently listed in the chooser
         self._ctrls     = {}     # {name: wx.Control}
         self._original  = {}     # Resources and tavern as loaded or last saved
         self._ignore_events = False
         self.prebuild()
+        humans = self.savefile.find_human_players()
+        if len(humans) == 1: self.select_player(humans[0])  # Savefile marks who the human is
 
 
-    def format_player(self, index, with_heroes=True):
-        """Returns label for player by 0-based index, with owned heroes if any."""
-        label = __("Player %s (%s)", index + 1, __(metadata.PLAYER_COLOURS[index]))
-        heroes = self.savefile.get_player_heroes(index) if with_heroes else []
-        return "%s - %s" % (label, ", ".join(map(str, heroes))) if heroes else label
+    def format_player(self, index, with_heroes=True, with_gold=False):
+        """Returns label for player by 0-based index, with gold and owned heroes if wanted."""
+        parts = [__("Player %s (%s)", index + 1, __(metadata.PLAYER_COLOURS[index]))]
+        if self.savefile.is_player_human(index): parts[0] += " %s" % __("[human]")
+        if with_gold:
+            parts.append(__("%s gold", self.savefile.get_player_resources(index)["gold"]))
+        if with_heroes:
+            heroes = self.savefile.get_player_heroes(index)
+            parts.append(", ".join(map(str, heroes)) if heroes else __("no heroes"))
+        return " - ".join(parts)
 
 
     def prebuild(self):
@@ -67,36 +75,36 @@ class PlayerPlugin(object):
 
         askpanel = self._askpanel = wx.Panel(self._panel)
         asksizer = askpanel.Sizer = wx.BoxSizer(wx.VERTICAL)
-        intro = wx.StaticText(askpanel, label=
-            __("Savegame does not record which player you are.") + "\n" +
-            __("Enter the amount of gold your player has in game:"))
+        intro = wx.StaticText(askpanel, label=__("Choose which player to work with:"))
         edit = self._ctrls["goldsearch"] = wx.TextCtrl(askpanel, size=(120, -1),
                                                        style=wx.TE_PROCESS_ENTER)
         button = wx.Button(askpanel, label=__("&Find player"))
         edit.Bind(wx.EVT_TEXT_ENTER, self.on_identify)
         button.Bind(wx.EVT_BUTTON,   self.on_identify)
         rowsizer = wx.BoxSizer(wx.HORIZONTAL)
+        rowsizer.Add(wx.StaticText(askpanel, label=__("Or find yourself by gold amount") + ":"),
+                     border=5, flag=wx.RIGHT | wx.ALIGN_CENTER_VERTICAL)
         rowsizer.Add(edit, border=5, flag=wx.RIGHT)
         rowsizer.Add(button)
 
         status = self._ctrls["status"] = wx.StaticText(askpanel)
 
-        # Shown only when several players hold the same amount of gold
         pickpanel = self._ctrls["pickpanel"] = wx.Panel(askpanel)
-        picksizer = pickpanel.Sizer = wx.BoxSizer(wx.HORIZONTAL)
-        choice = self._ctrls["pick"] = wx.Choice(pickpanel)
+        picksizer = pickpanel.Sizer = wx.BoxSizer(wx.VERTICAL)
+        choice = self._ctrls["pick"] = wx.Choice(pickpanel, size=(420, -1))
         pickbutton = wx.Button(pickpanel, label=__("&Use this player"))
         pickbutton.Bind(wx.EVT_BUTTON, self.on_pick_player)
-        picksizer.Add(wx.StaticText(pickpanel, label=__("Choose your player") + ":"),
-                      border=5, flag=wx.RIGHT | wx.ALIGN_CENTER_VERTICAL)
-        picksizer.Add(choice,     border=5, flag=wx.RIGHT)
-        picksizer.Add(pickbutton)
+        choice.Bind(wx.EVT_CHOICE, lambda e: self.on_pick_player())
+        pickrow = wx.BoxSizer(wx.HORIZONTAL)
+        pickrow.Add(choice,     border=5, flag=wx.RIGHT)
+        pickrow.Add(pickbutton)
+        picksizer.Add(pickrow)
 
         asksizer.Add(intro,     border=10, flag=wx.LEFT | wx.TOP | wx.RIGHT)
-        asksizer.Add(rowsizer,  border=10, flag=wx.ALL)
+        asksizer.Add(pickpanel, border=10, flag=wx.ALL)
+        asksizer.Add(rowsizer,  border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
         asksizer.Add(status,    border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
-        asksizer.Add(pickpanel, border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
-        pickpanel.Hide()
+        self.populate_player_choice()
 
         editpanel = self._editpanel = wx.Panel(self._panel)
         editsizer = editpanel.Sizer = wx.BoxSizer(wx.VERTICAL)
@@ -232,8 +240,7 @@ class PlayerPlugin(object):
     def on_identify(self, event=None):
         """Handler for looking up the player by the gold amount given."""
         text = self._ctrls["goldsearch"].Value.strip().replace(" ", "").replace(",", "")
-        status, pickpanel = self._ctrls["status"], self._ctrls["pickpanel"]
-        pickpanel.Hide()
+        status = self._ctrls["status"]
         if not text.isdigit():
             status.Label = __("Enter the gold amount as a plain number.")
             self.relayout()
@@ -251,9 +258,7 @@ class PlayerPlugin(object):
             status.Label = __("%s players have %s gold.", len(self._matches), text) + "\n" + \
                            __("Pick yourself below by the heroes you have, or spend some gold "
                               "in game and save again to tell them apart.")
-            self._ctrls["pick"].SetItems([self.format_player(i) for i in self._matches])
-            self._ctrls["pick"].Selection = 0
-            pickpanel.Show()
+            self.populate_player_choice(self._matches)
             self.relayout()
             logger.info("Gold amount %s matches %s players in %s.", text,
                         len(self._matches), self.savefile.filename)
@@ -263,13 +268,20 @@ class PlayerPlugin(object):
         self.select_player(self._matches[0])
 
 
+    def populate_player_choice(self, indexes=None):
+        """Fills the player chooser, with all players or only the given ones."""
+        self._picks = list(range(metadata.PLAYER_COUNT)) if indexes is None else list(indexes)
+        self._ctrls["pick"].SetItems([self.format_player(i, with_gold=True) for i in self._picks])
+        humans = [i for i, x in enumerate(self._picks) if self.savefile.is_player_human(x)]
+        if self._picks: self._ctrls["pick"].Selection = humans[0] if humans else 0
+
+
     def on_pick_player(self, event=None):
-        """Handler for choosing among players holding the same amount of gold."""
+        """Handler for choosing a player from the chooser."""
         selection = self._ctrls["pick"].Selection
-        if selection < 0: return
+        if not 0 <= selection < len(self._picks): return
         self._ctrls["status"].Label = ""
-        self._ctrls["pickpanel"].Hide()
-        self.select_player(self._matches[selection])
+        self.select_player(self._picks[selection])
 
 
     def select_player(self, index):
@@ -283,9 +295,9 @@ class PlayerPlugin(object):
     def on_reidentify(self, event=None):
         """Handler for returning to the player identification prompt."""
         self._ctrls["status"].Label = ""
-        self._ctrls["pickpanel"].Hide()
         self._index, self._matches = None, []
         self.savefile.player_index = None
+        self.populate_player_choice()
         self.render()
 
 

@@ -69,6 +69,10 @@ PLAYER_TAVERN_OFFSET, PLAYER_TAVERN_SLOTS = -87, 2  # Heroes offered in taverns,
 """Value marking an empty hero slot."""
 NO_HERO = 0xFF
 
+"""Byte offset of the human-or-computer flag relative to a player resource block."""
+PLAYER_HUMAN_OFFSET = 44
+PLAYER_HUMAN, PLAYER_COMPUTER = 0, 1
+
 
 """Hero skills, in file order."""
 SKILLS = [
@@ -1650,6 +1654,20 @@ class Savefile(object):
         self.patch(values, (pos, pos + PLAYER_TAVERN_SLOTS))
         logger.info("Set player %s tavern heroes in %s to %s.", index + 1, self.filename,
                     ", ".join(str(x) for x in self.get_player_tavern(index)))
+
+
+    def is_player_human(self, index):
+        """Returns whether the player by 0-based index is played by a human, or None."""
+        offset = self.find_players()
+        if offset is None or not 0 <= index < PLAYER_COUNT: return None
+        value = self.raw[offset + PLAYER_SIZE * index + PLAYER_HUMAN_OFFSET]
+        return value == PLAYER_HUMAN if value in (PLAYER_HUMAN, PLAYER_COMPUTER) else None
+
+
+    def find_human_players(self):
+        """Returns 0-based indexes of players marked as played by a human."""
+        if self.find_players() is None: return []
+        return [i for i in range(PLAYER_COUNT) if self.is_player_human(i)]
 
 
     def get_available_heroes(self, index=None):

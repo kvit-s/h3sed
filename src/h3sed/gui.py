@@ -1895,13 +1895,15 @@ class SavefilePage(wx.Panel):
         """Loads data from our file."""
         if not self.plugins:
             icon_index = self.notebook.GetImageList().Add(images.PageHero.Bitmap)
-            panel = wx.Panel(self.notebook)
-            self.notebook.AddPage(panel, __("Hero"), imageId=icon_index)
-            self.plugins.append(hero_gui.HeroPlugin(self.savefile, panel, self.undoredo))
-
+            # Player comes first: the hero tab can filter by player once one is identified
             panel = wx.Panel(self.notebook)
             self.notebook.AddPage(panel, __("Player"), imageId=icon_index)
             self.plugins.append(player_gui.PlayerPlugin(self.savefile, panel, self.undoredo))
+
+            panel = wx.Panel(self.notebook)
+            self.notebook.AddPage(panel, __("Hero"), imageId=icon_index)
+            self.plugins.append(hero_gui.HeroPlugin(self.savefile, panel, self.undoredo))
+            self.notebook.SetSelection(0)
 
             if self.notebook.PageCount < 2:
                 tabarea = next((x for x in self.notebook.Children
