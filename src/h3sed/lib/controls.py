@@ -1584,6 +1584,10 @@ def resize_img(img, size, aspect_ratio=True, bg=(-1, -1, -1)):
         if result is img: result = result.Copy()
         result.Resize(size, align_pos, *bg)
     return result.ConvertToBitmap() if isinstance(img, wx.Bitmap) else result
+## Cached widest-label widths for comboboxes, as {(font, longest labels): pixel width}
+_COMBO_WIDTHS = {}
+
+
 def set_combo_choices(ctrl, choices, labels, value=None):
     """
     Assigns choices to a combobox, inserting the items only when the dropdown is first used.
@@ -1597,6 +1601,7 @@ def set_combo_choices(ctrl, choices, labels, value=None):
     @param   value    label to show as current value, if any
     """
     ctrl._choices, ctrl._labels, ctrl._populated = list(choices), list(labels), False
+    fit_combo_width(ctrl, ctrl._labels)
     if not getattr(ctrl, "_choices_bound", False):
         ctrl._choices_bound = True
         filler = lambda event: (event.Skip(), populate_combo(event.EventObject))
@@ -1604,6 +1609,23 @@ def set_combo_choices(ctrl, choices, labels, value=None):
         ctrl.Bind(wx.EVT_COMBOBOX_DROPDOWN, filler)
     ctrl.SetItems([])
     set_combo_value(ctrl, value if value is not None else "")
+
+
+def fit_combo_width(ctrl, labels):
+    """
+    Widens a combobox to fit its longest label.
+
+    A combobox sizes itself to the items it holds; with items inserted only on
+    first use, it would otherwise shrink to the width of its current value alone.
+    Only the longest labels by character count are measured, as measuring every
+    label of every control costs more than the small chance of being a few pixels off.
+    """
+    if not labels: return
+    key = (ctrl.Font.GetNativeFontInfoDesc(), tuple(sorted(labels, key=len)[-3:]))
+    if key not in _COMBO_WIDTHS:
+        _COMBO_WIDTHS[key] = max(ctrl.GetTextExtent(x).Width for x in key[1])
+    arrow = wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X) or 17
+    ctrl.MinSize = (_COMBO_WIDTHS[key] + arrow + 10, ctrl.MinSize[1])
 
 
 def populate_combo(ctrl):

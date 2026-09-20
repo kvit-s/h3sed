@@ -1589,12 +1589,15 @@ class Savefile(object):
             return values if values[-1] <= PLAYER_GOLD_MAX else None
 
         self._players_offset = 0  # Falsy marker for "looked and found nothing"
-        for pos in range(1, len(raw) - PLAYER_SIZE * PLAYER_COUNT):
-            if resources_at(pos) is None: continue # for pos
+        # Records follow a run of 0xFF, so only look where such a run ends
+        limit = len(raw) - PLAYER_SIZE * PLAYER_COUNT
+        for match in re.finditer(b"\xFF[^\xFF]", bytes(raw[:limit + 1])):
+            pos = match.start() + 1
+            if resources_at(pos) is None: continue # for match
             if all(resources_at(pos + PLAYER_SIZE * i) is not None for i in range(1, PLAYER_COUNT)):
                 self._players_offset = pos
                 logger.info("Detected player records at byte %s in %s.", pos, self.filename)
-                break # for pos
+                break # for match
         else:
             logger.warning("Failed to detect player records in %s.", self.filename)
         return self._players_offset or None
