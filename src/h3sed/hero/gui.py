@@ -75,6 +75,8 @@ import wx.html
 import wx.lib.agw.flatnotebook
 
 import h3sed
+import wx.adv
+
 from .. lib import controls
 from .. lib import i18n
 from .. lib import util
@@ -149,7 +151,8 @@ class HeroPlugin(object):
         self._panel.DestroyChildren()
         self._panel.Sizer and self._panel.Sizer.Clear()
         label  = wx.StaticText(self._panel, name="selectherolabel", label=__("&Select hero") + ":")
-        combo  = wx.ComboBox(self._panel, name="selecthero", style=wx.CB_DROPDOWN | wx.CB_READONLY)
+        combo  = h3sed.gui.make_combo(self._panel, gamedata.DATA.available(),
+                                      name="selecthero", style=wx.CB_DROPDOWN | wx.CB_READONLY)
         search = wx.SearchCtrl(self._panel)
         tabs = wx.lib.agw.flatnotebook.FlatNotebook(self._panel,
             agwStyle=wx.lib.agw.flatnotebook.FNB_DROPDOWN_TABS_LIST |
@@ -879,12 +882,20 @@ class HeroPlugin(object):
         heroes = [h for h in self._heroes if h in owned] if mine.Value and owned else self._heroes
         hero0 = self._hero
         self._ignore_events = True
+        combo.Freeze()
         try:
-            combo.SetItems([str(x) for x in heroes])
-            for i, hero in enumerate(heroes):
-                combo.SetClientData(i, self._heroes.index(hero))
+            if isinstance(combo, wx.adv.BitmapComboBox):
+                combo.Clear()
+                for hero in heroes:
+                    bitmap = gamedata.DATA.get_hero_bitmap(hero.index, gamedata.HERO_ICON_SIZE)
+                    combo.Append(str(hero), bitmap or wx.NullBitmap, self._heroes.index(hero))
+            else:
+                combo.SetItems([str(x) for x in heroes])
+                for i, hero in enumerate(heroes):
+                    combo.SetClientData(i, self._heroes.index(hero))
             if hero0 is not None and hero0 in heroes: self.set_combo_hero(self._heroes.index(hero0))
         finally:
+            combo.Thaw()
             self._ignore_events = False
 
 

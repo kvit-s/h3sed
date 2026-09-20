@@ -62,8 +62,9 @@ HERO_PORTRAITS = {
     155: "HPS131DM.pcx",  # Xeron
 }
 
-"""Size to fit item icons into, keeping combobox rows to a sensible height."""
+"""Sizes to fit icons into, keeping combobox rows to a sensible height."""
 ICON_SIZE = (22, 22)
+HERO_ICON_SIZE = (33, 22)  # Portraits are wider than tall
 
 """Palette indexes standing for transparency and shadow in sprite frames."""
 SPRITE_TRANSPARENT = (0, 1, 4, 5, 6, 7)
@@ -230,11 +231,12 @@ class GameData(object):
         return HERO_PORTRAITS.get(hero_id)
 
 
-    def get_hero_bitmap(self, hero_id):
-        """Returns wx.Bitmap portrait for a hero id, or None."""
-        if hero_id not in self._heroes:
-            self._heroes[hero_id] = self._load_hero_bitmap(hero_id)
-        return self._heroes[hero_id]
+    def get_hero_bitmap(self, hero_id, size=None):
+        """Returns wx.Bitmap portrait for a hero id, scaled to size if given, or None."""
+        key = (hero_id, size)
+        if key not in self._heroes:
+            self._heroes[key] = self.scaled(self._load_hero_bitmap(hero_id), size)
+        return self._heroes[key]
 
 
     def _load_hero_bitmap(self, hero_id):
