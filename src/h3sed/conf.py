@@ -107,7 +107,9 @@ SavegameNewFormat = True
 Translations = {}
 
 """Whether the program checks for updates every UpdateCheckInterval."""
-UpdateCheckAutomatic = True
+# Off by default: the check scrapes DownloadURL for a zip link named like
+# h3sed_3.8_win.zip, which a GitHub releases page does not present that way.
+UpdateCheckAutomatic = False
 
 """Days between automatic update checks."""
 UpdateCheckInterval = 7
@@ -142,8 +144,8 @@ PopupUnexpectedErrors = True
 FilesOpen = set()
 
 """URLs for download list and homepage."""
-DownloadURL = "https://erki.lap.ee/downloads/h3sed/"
-HomeUrl     = "https://suurjaak.github.io/h3sed"
+DownloadURL = "https://github.com/kvit-s/h3sed/releases"
+HomeUrl     = "https://github.com/kvit-s/h3sed"
 
 """Minimum allowed size for the main window, as (width, height)."""
 MinWindowSize = (500, 400)

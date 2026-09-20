@@ -1,6 +1,7 @@
 The MIT License
 
 Copyright (c) 2020 by Erki Suurjaak
+Copyright (c) 2026 by kvit-s (modifications in this fork)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

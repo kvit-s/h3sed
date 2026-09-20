@@ -1,6 +1,23 @@
 h3sed
 =====
 
+> **This is a fork** of [suurjaak/h3sed](https://github.com/suurjaak/h3sed) by Erki Suurjaak,
+> and is not affiliated with or endorsed by the original project.
+> Bug reports about this fork belong here, not upstream.
+>
+> What differs from upstream:
+>
+> - one savegame is kept open at a time, instead of any number of tabs
+> - heroes are parsed on demand, and hero property tabs are built when first shown,
+>   which makes opening a savegame noticeably faster
+> - a Player tab for editing gold and other resources, and tavern heroes
+> - the human player is detected from the savefile, and heroes can be filtered to their own
+> - hero portraits and artifact icons are read from the installed game, where available
+>
+> The first two also fix a crash: upstream spends roughly 875 Windows USER handles per open
+> savegame, against a per-process limit of 10000, so opening a dozen savegames at once
+> exhausted the quota and killed the program.
+
 h3sed is a Heroes3 Savegame Editor, written in Python.
 
 It opens savegame files from Heroes of Might and Magic III,
@@ -23,7 +40,7 @@ Heroes Chronicles, and Horn of the Abyss.
 
 Usable as a graphical program, command-line program, or library.
 
-Downloads at https://suurjaak.github.io/h3sed.
+Downloads for this fork at https://github.com/kvit-s/h3sed/releases.
 
 
 Graphical Usage
@@ -161,12 +178,16 @@ savefile.write()
 Installation
 ------------
 
-Windows: download and launch the latest setup from
-https://suurjaak.github.io/h3sed/downloads.html.
+Windows: download and launch the latest release from
+https://github.com/kvit-s/h3sed/releases.
 
-Mac/Linux/other: install Python and pip, run `pip install h3sed`.
+Mac/Linux/other: install Python and pip, then install from source:
+
+    pip install git+https://github.com/kvit-s/h3sed.git
 
 The pip installation will add the `h3sed` command to path.
+
+Note that `pip install h3sed` installs the original project from PyPI, not this fork.
 
 Windows installers have been provided for convenience. The program itself
 is stand-alone, can work from any directory, and does not need additional
