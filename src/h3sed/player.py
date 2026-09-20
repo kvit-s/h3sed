@@ -323,7 +323,11 @@ class PlayerPlugin(object):
 
     def command(self, callable, name):
         """Submits an undoable command to the command processor."""
-        self._undoredo.Submit(h3sed.gui.PluginCommand(self, callable, name=name))
+        def do():
+            if not callable(): return False
+            self.patch()  # Command processor only patches on redo, not on the first do
+            return True
+        self._undoredo.Submit(h3sed.gui.PluginCommand(self, do, name=name))
 
 
     def get_data(self):
