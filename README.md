@@ -5,16 +5,23 @@ h3sed
 > and is not affiliated with or endorsed by the original project.
 > Bug reports about this fork belong here, not upstream.
 >
-> What differs from upstream:
+> **The reason this fork exists** is player-level editing, which no Heroes 3 savegame
+> editor appears to offer — the others all work at the hero level:
 >
-> - one savegame is kept open at a time, instead of any number of tabs
-> - heroes are parsed on demand, and hero property tabs are built when first shown,
->   which makes opening a savegame noticeably faster
-> - a Player tab for editing gold and other resources, and tavern heroes
+> - **tavern heroes**: choose exactly which heroes are offered in the tavern, picking
+>   only from heroes still available, instead of reloading the save until the one you
+>   want turns up
+> - **resources**: set gold, wood, ore, mercury, sulfur, crystal and gems per player
+>
+> Also different from upstream:
+>
 > - the human player is detected from the savefile, and heroes can be filtered to their own
 > - hero portraits and artifact icons are read from the installed game, where available
+> - heroes are parsed on demand, and hero property tabs are built when first shown,
+>   which makes opening a savegame noticeably faster
+> - one savegame is kept open at a time, instead of any number of tabs
 >
-> The first two also fix a crash: upstream spends roughly 875 Windows USER handles per open
+> The last two also fix a crash: upstream spends roughly 875 Windows USER handles per open
 > savegame, against a per-process limit of 10000, so opening a dozen savegames at once
 > exhausted the quota and killed the program.
 
