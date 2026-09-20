@@ -62,6 +62,9 @@ HERO_PORTRAITS = {
     155: "HPS131DM.pcx",  # Xeron
 }
 
+"""Size to fit item icons into, keeping combobox rows to a sensible height."""
+ICON_SIZE = (22, 22)
+
 """Palette indexes standing for transparency and shadow in sprite frames."""
 SPRITE_TRANSPARENT = (0, 1, 4, 5, 6, 7)
 
@@ -248,11 +251,12 @@ class GameData(object):
         return None
 
 
-    def get_artifact_bitmap(self, artifact_id):
-        """Returns wx.Bitmap icon for an artifact id, or None."""
-        if artifact_id not in self._artifacts:
-            self._artifacts[artifact_id] = self._load_artifact_bitmap(artifact_id)
-        return self._artifacts[artifact_id]
+    def get_artifact_bitmap(self, artifact_id, size=ICON_SIZE):
+        """Returns wx.Bitmap icon for an artifact id, scaled to size, or None."""
+        key = (artifact_id, size)
+        if key not in self._artifacts:
+            self._artifacts[key] = self.scaled(self._load_artifact_bitmap(artifact_id), size)
+        return self._artifacts[key]
 
 
     def _load_artifact_bitmap(self, artifact_id):
@@ -279,7 +283,7 @@ class GameData(object):
 
     def scaled(self, bitmap, size):
         """Returns the bitmap scaled to fit within (width, height), or None."""
-        if not bitmap or not bitmap.IsOk(): return None
+        if not bitmap or not bitmap.IsOk() or not size: return bitmap or None
         w, h = bitmap.Width, bitmap.Height
         ratio = min(float(size[0]) / w, float(size[1]) / h)
         if ratio >= 1: return bitmap
