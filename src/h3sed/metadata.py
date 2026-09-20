@@ -1651,6 +1651,25 @@ class Savefile(object):
                     ", ".join(str(x) for x in self.get_player_tavern(index)))
 
 
+    def get_available_heroes(self, index=None):
+        """
+        Returns heroes that can be offered in taverns, as [Hero, ] ordered by name.
+
+        Heroes owned by a player are never offered, and no hero is offered to more
+        than one player at a time; heroes currently offered to the given player are
+        included, being available to it.
+
+        @param   index  0-based index of the player to list heroes for, if any
+        """
+        if self.find_players() is None: return []
+        taken = set()
+        for i in range(PLAYER_COUNT):
+            taken.update(h.index for h in self.get_player_heroes(i) if h)
+            if i == index: continue # for i
+            taken.update(h.index for h in self.get_player_tavern(i) if h)
+        return sorted(h for h in self.get_hero_ids().values() if h.index not in taken)
+
+
     def _read_hero_slots(self, index, offset_delta, count, keep_empty=False):
         """Returns heroes in a slot array of the player record, as [Hero or None, ]."""
         offset = self.find_players()

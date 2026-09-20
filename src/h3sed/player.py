@@ -127,6 +127,9 @@ class PlayerPlugin(object):
             gridsizer.Add(ctrl)
 
         tavernlabel = wx.StaticText(editpanel, label=__("Heroes available in taverns") + ":")
+        tavernnote = self._ctrls["tavernnote"] = wx.StaticText(editpanel, label=
+            __("Only heroes not already owned or offered elsewhere can be chosen."))
+        ColourManager.Manage(tavernnote, "ForegroundColour", wx.SYS_COLOUR_GRAYTEXT)
         tavernsizer = wx.BoxSizer(wx.HORIZONTAL)
         for i in range(metadata.PLAYER_TAVERN_SLOTS):
             ctrl = self._ctrls["tavern%s" % i] = wx.ComboBox(
@@ -144,7 +147,8 @@ class PlayerPlugin(object):
         editsizer.Add(heroes,      border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.GROW)
         editsizer.Add(gridsizer,   border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
         editsizer.Add(tavernlabel, border=10, flag=wx.LEFT | wx.RIGHT)
-        editsizer.Add(tavernsizer, border=10, flag=wx.ALL)
+        editsizer.Add(tavernsizer, border=10, flag=wx.LEFT | wx.RIGHT | wx.TOP)
+        editsizer.Add(tavernnote,  border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
         editsizer.Add(note,        border=10, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM)
 
         sizer.Add(askpanel,  flag=wx.GROW)
@@ -184,7 +188,7 @@ class PlayerPlugin(object):
             for name, value in values.items():
                 if self._ctrls[name].Value != value: self._ctrls[name].Value = value
 
-            choices = [None] + sorted(self.savefile.get_hero_ids().values())
+            choices = [None] + self.savefile.get_available_heroes(self._index)
             labels = [__("none")] + [str(h) for h in choices[1:]]
             for i, hero in enumerate(tavern):
                 ctrl = self._ctrls["tavern%s" % i]
