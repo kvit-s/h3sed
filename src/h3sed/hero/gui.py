@@ -111,6 +111,7 @@ class HeroPlugin(object):
         self._hero_yamls = {}      # Lazy cache as {hero: {full, originals, currents}}
         self._pages_visited = []   # Visited tabs, as [hero index in self._heroes or None if index page]
         self._subtab_focus = {}    # {hero index in self._heroes: focused subtab index}
+        self._subtabs_stale = set()  # Hero property subtabs not built for current hero, as {name}
         self._ignore_events = False  # For ignoring change events from programmatic selections et al
         self._index = {
             "herotexts": [],       # [hero contents to search in, as [{category: plaintext}] ]
@@ -286,6 +287,7 @@ class HeroPlugin(object):
         self._propspanel.DestroyChildren()
         self._propspanel.Sizer.Clear()
         del self._plugins[:]
+        self._subtabs_stale.clear()  # Panels are built anew from here on
         self._ctrls["hero"].SetItems([str(x) for x in self._heroes])
 
         nb = wx.Notebook(self._propspanel)
@@ -644,10 +646,31 @@ class HeroPlugin(object):
         else: self.select_hero(self._pages[page], status=False)
 
 
+    def ensure_subtab_rendered(self):
+        """Builds the currently shown hero property subtab if not yet built for current hero."""
+        if not self._panel or not self._hero or not self._plugins: return
+        index = self._ctrls["properties"].Selection
+        if not 0 <= index < len(self._plugins): return
+        props = self._plugins[index]
+        if props["name"] not in self._subtabs_stale: return
+
+        # Building a subtab the first time can take seconds, for the artifact dropdown lists
+        busy = None
+        if not props["panel"].GetChildren():  # First build of this panel: can take seconds
+            label = __(props.get("label") or props["name"])
+            busy = controls.BusyPanel(self._panel, __("Loading %s.", label))
+        self._panel.Freeze()
+        try: self.render_plugin(props["name"], ui=True, log=False)
+        finally:
+            self._panel.Thaw()
+            busy and busy.Close()
+
+
     def on_change_hero_subtab(self, event):
         """Handler for changing a page in the hero properties notebook, updates UI and settings."""
         conf.Positions.update(herotab_index=event.Selection)
         self._ctrls["menubutton"].Enable(self._plugins[event.Selection]["has_menu"])
+        self.ensure_subtab_rendered()
         index = next(i for i, h in enumerate(self._heroes) if h == self._hero)
         self._subtab_focus[index] = event.Selection
 
@@ -835,8 +858,13 @@ class HeroPlugin(object):
                 logger.info("Loading hero %s (bytes %s-%s in savefile).",
                             hero2, hero2.span[0], hero2.span[1] - 1)
             self._hero = hero2
-            for p in self._plugins:
-                self.render_plugin(p["name"], reload=True, log=not page_existed and status)
+            # Build only the subtab about to be shown; the rest are built when visited,
+            # as building all of them takes seconds for the artifact dropdown lists
+            shown = self._subtab_focus.get(index, self._ctrls["properties"].Selection)
+            shown = max(0, min(shown, len(self._plugins) - 1))
+            for i, p in enumerate(self._plugins):
+                self.render_plugin(p["name"], reload=True, ui=(i == shown),
+                                   log=not page_existed and status)
 
         finally:
             if not self._panel: return
@@ -845,6 +873,7 @@ class HeroPlugin(object):
             else:
                 self._subtab_focus[index] = self._ctrls["properties"].Selection
             if self._pages_visited[-1:] != [index]: self._pages_visited.append(index)
+            self.ensure_subtab_rendered()
             self._panel.Layout()
             self._panel.Thaw()
             self._ignore_events = False
@@ -1015,17 +1044,20 @@ class HeroPlugin(object):
         wx.PostEvent(self._panel, h3sed.gui.SavefilePageEvent(self._panel.Id))
 
 
-    def render_plugin(self, name, reload=False, log=True):
+    def render_plugin(self, name, reload=False, log=True, ui=None):
         """
         Renders or re-renders panel for the specified plugin.
 
         @param   reload  whether plugins should re-parse state from hero bytes
         @param   log     whether should log actions
+        @param   ui      whether to build the panel contents, or only load plugin state;
+                         None to build unless the panel is already pending a build
         """
         p = next((x for x in self._plugins if x["name"] == name), None)
         if not p:
             logger.warning("Call to render unknown plugin %s.", name)
             return
+        if ui is None: ui = name not in self._subtabs_stale
 
         def fmt(state):
             if isinstance(state, set):  return list(state)
@@ -1040,6 +1072,10 @@ class HeroPlugin(object):
         if reload or item0 is None:
             plugin.load(self._hero)
             if log: logger.info("Loaded hero %s %s %s.", self._hero, p["name"], fmt(plugin.state()))
+        if not ui:
+            self._subtabs_stale.add(name)  # Panel gets built when its subtab is shown
+            return
+        self._subtabs_stale.discard(name)
         p["panel"].Freeze()
         try:
             do_accelerate = False
