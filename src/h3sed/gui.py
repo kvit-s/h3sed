@@ -47,6 +47,7 @@ from . import functions
 from . import guibase
 from . import images
 from . import metadata
+from . import player as player_gui
 from . import templates
 
 logger = logging.getLogger(__name__)
@@ -1876,7 +1877,7 @@ class SavefilePage(wx.Panel):
             conf.FilesOpen.discard(filename1)
             conf.FilesOpen.add(filename2)
         if not spans:
-            try: self.savefile.read()
+            try: self.savefile.read(parse_heroes=False)
             except Exception: logger.warning("Error re-reading %s.", filename2, exc_info=True)
             if rename:
                 evt = SavefilePageEvent(self.Id, source=self, rename=True,
@@ -1897,6 +1898,10 @@ class SavefilePage(wx.Panel):
             panel = wx.Panel(self.notebook)
             self.notebook.AddPage(panel, __("Hero"), imageId=icon_index)
             self.plugins.append(hero_gui.HeroPlugin(self.savefile, panel, self.undoredo))
+
+            panel = wx.Panel(self.notebook)
+            self.notebook.AddPage(panel, __("Player"), imageId=icon_index)
+            self.plugins.append(player_gui.PlayerPlugin(self.savefile, panel, self.undoredo))
 
             if self.notebook.PageCount < 2:
                 tabarea = next((x for x in self.notebook.Children

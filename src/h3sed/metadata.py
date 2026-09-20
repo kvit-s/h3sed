@@ -18,6 +18,7 @@ import gzip
 import logging
 import os
 import re
+import struct
 
 import h3sed
 from . lib import util
@@ -43,6 +44,23 @@ PRIMARY_ATTRIBUTES = OrderedDict([
     ("attack", "Attack"),      ("defense",   "Defense"),
     ("power",  "Spell Power"), ("knowledge", "Knowledge")
 ])
+
+
+"""Player resources, in file order within a player record."""
+PLAYER_RESOURCES = OrderedDict([
+    ("wood",    "Wood"),    ("mercury", "Mercury"), ("ore",  "Ore"),
+    ("sulfur",  "Sulfur"),  ("crystal", "Crystal"), ("gems", "Gems"),
+    ("gold",    "Gold"),
+])
+
+"""Player colours, in file order."""
+PLAYER_COLOURS = ["Red", "Blue", "Tan", "Green", "Orange", "Purple", "Teal", "Pink"]
+
+"""Number of player slots in savefile, and byte length of one player record."""
+PLAYER_COUNT, PLAYER_SIZE = 8, 145
+
+"""Maximum values accepted when recognizing a player resource block."""
+PLAYER_RESOURCE_MAX, PLAYER_GOLD_MAX = 100000, 100000000
 
 
 """Hero skills, in file order."""
@@ -1376,6 +1394,7 @@ class Savefile(object):
         self.size       = 0
         self.usize      = 0
         self.heroes     = []
+        self._players_offset = None  # Byte offset of player records, 0 if looked for and absent
         self.read(parse_heroes)
 
 
@@ -1406,6 +1425,7 @@ class Savefile(object):
         self.raw0 = self.raw = raw
         self.mapdata = {}
         self.heroes = []
+        self._players_offset = None
         self.detect_version()
         self.parse_metadata()
         self.populate_heroes()
@@ -1534,6 +1554,66 @@ class Savefile(object):
         logger.info("%s heroes detected in %s as version %r.",
                     len(heroes) or "No ", self.filename, self.version)
         self.heroes = heroes
+
+
+    def find_players(self):
+        """
+        Returns byte offset of the player records array, or None if not recognized.
+
+        Savefile holds PLAYER_COUNT player records of PLAYER_SIZE bytes each, back to back,
+        every record starting with its resources as unsigned 32-bit little-endian integers
+        in PLAYER_RESOURCES order, preceded by a run of 0xFF bytes. The array is not
+        necessarily aligned to any boundary.
+        """
+        if self._players_offset is not None: return self._players_offset or None
+        raw, size = self.raw, 4 * len(PLAYER_RESOURCES)
+
+        def resources_at(pos):
+            """Returns resource values at position if they look like a player record."""
+            if pos < 1 or pos + size > len(raw): return None
+            if raw[pos - 1] != 0xFF or raw[pos] == 0xFF: return None
+            values = list(struct.unpack_from("<%dI" % len(PLAYER_RESOURCES), raw, pos))
+            if any(v > PLAYER_RESOURCE_MAX for v in values[:-1]): return None
+            return values if values[-1] <= PLAYER_GOLD_MAX else None
+
+        self._players_offset = 0  # Falsy marker for "looked and found nothing"
+        for pos in range(1, len(raw) - PLAYER_SIZE * PLAYER_COUNT):
+            if resources_at(pos) is None: continue # for pos
+            if all(resources_at(pos + PLAYER_SIZE * i) is not None for i in range(1, PLAYER_COUNT)):
+                self._players_offset = pos
+                logger.info("Detected player records at byte %s in %s.", pos, self.filename)
+                break # for pos
+        else:
+            logger.warning("Failed to detect player records in %s.", self.filename)
+        return self._players_offset or None
+
+
+    def get_player_resources(self, index):
+        """Returns resources of player by 0-based index, as {name: value}, or None."""
+        offset = self.find_players()
+        if offset is None or not 0 <= index < PLAYER_COUNT: return None
+        values = struct.unpack_from("<%dI" % len(PLAYER_RESOURCES), self.raw,
+                                    offset + PLAYER_SIZE * index)
+        return OrderedDict(zip(PLAYER_RESOURCES, values))
+
+
+    def set_player_resources(self, index, resources):
+        """Patches savefile contents with given {name: value} for player by 0-based index."""
+        offset = self.find_players()
+        if offset is None or not 0 <= index < PLAYER_COUNT: return
+        values = OrderedDict(self.get_player_resources(index), **resources)
+        span = (offset + PLAYER_SIZE * index,
+                offset + PLAYER_SIZE * index + 4 * len(PLAYER_RESOURCES))
+        self.patch(struct.pack("<%dI" % len(PLAYER_RESOURCES), *values.values()), span)
+        logger.info("Set player %s resources in %s to %s.", index + 1, self.filename,
+                    ", ".join("%s=%s" % kv for kv in values.items()))
+
+
+    def find_player_by_gold(self, gold):
+        """Returns 0-based indexes of players having given amount of gold."""
+        if self.find_players() is None: return []
+        return [i for i in range(PLAYER_COUNT)
+                if self.get_player_resources(i)["gold"] == gold]
 
 
     def find_heroes(self, *texts, **keywords):
