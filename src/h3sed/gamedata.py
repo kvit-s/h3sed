@@ -41,6 +41,27 @@ HERO_CLASSES = ["KN", "CL", "RN", "DR", "AL", "WZ", "HR", "DM",
 """Hero classes numbering their portraits from zero rather than by hero id."""
 HERO_CLASSES_RESTARTING = ["PL", "EL"]
 
+"""
+Portrait files for heroes whose names do not follow from their class.
+
+Campaign heroes were added late and kept one-off file names; identified by
+matching their portraits against the hero images on heroes.thelazy.net.
+"""
+HERO_PORTRAITS = {
+    144: "HPS130KN.pcx",  # Sir Mullich
+    145: "HPS000SH.pcx",  # Adrienne
+    146: "HPS128QC.pcx",  # Catherine
+    147: "HPS003SH.pcx",  # Dracon
+    148: "HPS004SH.pcx",  # Gelu
+    149: "HPS005SH.pcx",  # Kilgor
+    150: "HPS006SH.pcx",  # Lord Haart, the death knight one
+    151: "HPS007SH.pcx",  # Mutare
+    152: "HPS009SH.pcx",  # Roland
+    153: "HPS008SH.pcx",  # Mutare Drake
+    154: "HPS001SH.pcx",  # Boragus
+    155: "HPS131DM.pcx",  # Xeron
+}
+
 """Palette indexes standing for transparency and shadow in sprite frames."""
 SPRITE_TRANSPARENT = (0, 1, 4, 5, 6, 7)
 
@@ -197,13 +218,13 @@ class GameData(object):
 
 
     def get_portrait_name(self, hero_id):
-        """Returns the portrait file name for a hero id, or None if not derivable."""
+        """Returns the portrait file name for a hero id, or None if unknown."""
         if hero_id < 8 * len(HERO_CLASSES):
             return "HPS%03d%s.pcx" % (hero_id, HERO_CLASSES[hero_id // 8])
         index = hero_id - 8 * len(HERO_CLASSES)
         if index < 8 * len(HERO_CLASSES_RESTARTING):
             return "HPS%03d%s.pcx" % (index % 8, HERO_CLASSES_RESTARTING[index // 8])
-        return None  # Campaign heroes use one-off names that are not derivable
+        return HERO_PORTRAITS.get(hero_id)
 
 
     def get_hero_bitmap(self, hero_id):
