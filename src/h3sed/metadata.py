@@ -69,6 +69,15 @@ PLAYER_TAVERN_OFFSET, PLAYER_TAVERN_SLOTS = -87, 2  # Heroes offered in taverns,
 """Value marking an empty hero slot."""
 NO_HERO = 0xFF
 
+"""
+Game versions the player record layout has been verified against.
+
+Player records were worked out from Shadow of Death savegames; the layout may
+differ in other versions, where detection can fail or, less likely, match the
+wrong bytes.
+"""
+PLAYER_VERIFIED_VERSIONS = ["sod"]
+
 """Byte offset of the human-or-computer flag relative to a player resource block."""
 PLAYER_HUMAN_OFFSET = 44
 PLAYER_HUMAN, PLAYER_COMPUTER = 0, 1
@@ -1705,6 +1714,11 @@ class Savefile(object):
                 if keep_empty: result.append(None)
             else: result.append(heroes.get(value))
         return result
+
+
+    def is_player_layout_verified(self):
+        """Returns whether player records have been verified for this savegame version."""
+        return util.tuplefy(self.version_id)[0] in PLAYER_VERIFIED_VERSIONS
 
 
     def find_player_by_gold(self, gold):

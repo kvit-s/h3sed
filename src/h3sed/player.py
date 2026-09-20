@@ -21,6 +21,7 @@ import h3sed
 from . lib import controls
 from . lib.controls import ColourManager
 from . lib.i18n import translate as __
+import h3sed.version
 from . import metadata
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,17 @@ class PlayerPlugin(object):
         self.prebuild()
         humans = self.savefile.find_human_players()
         if len(humans) == 1: self.select_player(humans[0])  # Savefile marks who the human is
+
+
+    def format_version_note(self):
+        """Returns a caution for savegame versions the player layout is unverified for."""
+        if self.savefile.is_player_layout_verified(): return ""
+        version = h3sed.version.VERSIONS.get(self.savefile.version)
+        return " ".join([
+            __("Player data has only been verified for %s savegames; this one is %s.",
+               __("Shadow of Death"), __(version.TITLE) if version else self.savefile.version),
+            __("Check the values against the game before saving."),
+        ])
 
 
     def format_player(self, index, with_heroes=True, with_gold=False):
@@ -72,6 +84,12 @@ class PlayerPlugin(object):
                       border=10, flag=wx.ALL)
             self._panel.Layout(), self._panel.Thaw()
             return
+
+        note = self._ctrls["versionnote"] = wx.StaticText(self._panel)
+        ColourManager.Manage(note, "ForegroundColour", "LinkColour")
+        note.Label = self.format_version_note()
+        note.Show(bool(note.Label))
+        sizer.Add(note, border=10, flag=wx.ALL | wx.GROW)
 
         askpanel = self._askpanel = wx.Panel(self._panel)
         asksizer = askpanel.Sizer = wx.BoxSizer(wx.VERTICAL)
