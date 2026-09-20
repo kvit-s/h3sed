@@ -85,7 +85,8 @@ class MainWindow(guibase.TemplateFrameMixIn, wx.Frame):
             "MainBgColour":            wx.SYS_COLOUR_WINDOW,
             "WidgetColour":            wx.SYS_COLOUR_BTNFACE,
         }, darkcolourmap={
-            "LinkColour":              wx.SYS_COLOUR_HOTLIGHT,
+            # Hotlight resolves to near-white in dark themes, indistinguishable from body text
+            "LinkColour":              wx.Colour(0x58, 0xA6, 0xFF),
             "MainBgColour":            wx.SYS_COLOUR_BTNFACE,
         })
 
