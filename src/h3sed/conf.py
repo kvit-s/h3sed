@@ -126,7 +126,7 @@ WindowSize = (700, 820)
 """---------------------------- /FileDirectives ----------------------------"""
 
 """Whether hero selection is limited to the heroes of the identified player."""
-HeroesOwnOnly = False
+HeroesOwnOnly = True
 
 """Whether logging to log window is enabled."""
 LogEnabled = True

@@ -203,7 +203,6 @@ class HeroPlugin(object):
 
         mine = self._ctrls["mine"] = wx.CheckBox(self._panel, label=__("&Only my heroes"))
         mine.ToolTip = __("Show only the heroes of the player identified on the Player tab")
-        mine.Value = conf.HeroesOwnOnly
         mine.Bind(wx.EVT_CHECKBOX,   self.on_toggle_mine)
         mine.Bind(wx.EVT_UPDATE_UI,  self.on_update_mine)
         combo.Bind(wx.EVT_COMBOBOX, self.on_select_hero)
@@ -857,7 +856,7 @@ class HeroPlugin(object):
         combo, mine = self._ctrls["hero"], self._ctrls["mine"]
         owned = self.get_own_heroes()
         mine.Enable(bool(owned))
-        if not owned: mine.Value = False
+        mine.Value = bool(owned) and conf.HeroesOwnOnly  # On by default once a player is known
         state = (self.savefile.player_index, mine.Value, len(self._heroes))
         if not force and state == self._combo_state: return
         self._combo_state = state
