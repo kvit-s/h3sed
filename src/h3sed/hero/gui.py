@@ -113,6 +113,7 @@ class HeroPlugin(object):
         self._subtab_focus = {}    # {hero index in self._heroes: focused subtab index}
         self._subtabs_stale = set()  # Hero property subtabs not built for current hero, as {name}
         self._combo_state = None   # Signature of what the hero combobox was last filled from
+        self._own_heroes = None    # Cached (player index, [Hero, ]) for the own-heroes filter
         self._ignore_events = False  # For ignoring change events from programmatic selections et al
         self._index = {
             "herotexts": [],       # [hero contents to search in, as [{category: plaintext}] ]
@@ -203,7 +204,8 @@ class HeroPlugin(object):
         mine = self._ctrls["mine"] = wx.CheckBox(self._panel, label=__("&Only my heroes"))
         mine.ToolTip = __("Show only the heroes of the player identified on the Player tab")
         mine.Value = conf.HeroesOwnOnly
-        mine.Bind(wx.EVT_CHECKBOX, self.on_toggle_mine)
+        mine.Bind(wx.EVT_CHECKBOX,   self.on_toggle_mine)
+        mine.Bind(wx.EVT_UPDATE_UI,  self.on_update_mine)
         combo.Bind(wx.EVT_COMBOBOX, self.on_select_hero)
         combo.Bind(wx.EVT_KEY_DOWN, self.on_key_select)
 
@@ -823,6 +825,28 @@ class HeroPlugin(object):
         wx.CallLater(100, lambda: self._panel and self._panel.Layout())
 
 
+    def get_own_heroes(self):
+        """Returns heroes of the player identified on the player tab, as [Hero, ]."""
+        index = self.savefile.player_index
+        if self._own_heroes is None or self._own_heroes[0] != index:
+            heroes = [] if index is None else self.savefile.get_player_heroes(index)
+            self._own_heroes = (index, heroes)
+        return self._own_heroes[1]
+
+
+    def on_update_mine(self, event):
+        """
+        Handler for updating own-heroes checkbox state.
+
+        The player is identified on another tab, so the checkbox picks the change up
+        here rather than being told about it.
+        """
+        owned = self.get_own_heroes()
+        event.Enable(bool(owned))
+        if self._combo_state and self._combo_state[0] != self.savefile.player_index:
+            wx.CallAfter(lambda: self._panel and self.refresh_hero_combo())
+
+
     def refresh_hero_combo(self, force=False):
         """
         Fills the hero selection combobox, filtered to own heroes if so chosen.
@@ -831,7 +855,7 @@ class HeroPlugin(object):
         position and hero index differ.
         """
         combo, mine = self._ctrls["hero"], self._ctrls["mine"]
-        owned = self.savefile.get_player_heroes(self.savefile.player_index)                 if self.savefile.player_index is not None else []
+        owned = self.get_own_heroes()
         mine.Enable(bool(owned))
         if not owned: mine.Value = False
         state = (self.savefile.player_index, mine.Value, len(self._heroes))
