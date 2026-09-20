@@ -1,3 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
+*.exe
+build/dist/
+build/work/
+build/makeexe.log
